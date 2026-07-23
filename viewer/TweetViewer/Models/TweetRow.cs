@@ -38,4 +38,13 @@ public sealed record TweetRow
     public bool IsRead { get; init; }
 }
 
-public sealed record TweetMediaRow(string TweetId, int Index, string? SourceUrl, string Ext);
+public enum MediaOrigin
+{
+    Own = 0,       // 本文の画像
+    Quoted = 1,    // 引用先の画像
+    Retweeted = 2, // RT元の画像
+}
+
+public sealed record TweetMediaRow(
+    string TweetId, int Index, string? SourceUrl, string Ext,
+    MediaOrigin Origin = MediaOrigin.Own);

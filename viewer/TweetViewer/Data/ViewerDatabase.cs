@@ -10,7 +10,7 @@ namespace TweetViewer.Data;
 /// </summary>
 public sealed class ViewerDatabase
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
 
     public string DataDir { get; }
     public string DbPath { get; }
@@ -103,6 +103,7 @@ public sealed class ViewerDatabase
               idx        INTEGER NOT NULL,
               source_url TEXT,
               ext        TEXT NOT NULL,
+              origin     INTEGER NOT NULL DEFAULT 0,
               PRIMARY KEY (tweet_id, idx)
             ) WITHOUT ROWID;
 
@@ -114,7 +115,7 @@ public sealed class ViewerDatabase
 
             CREATE INDEX IF NOT EXISTS ix_read_state_user ON read_state(username);
 
-            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '2');
+            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '3');
             """;
         cmd.ExecuteNonQuery();
 
@@ -126,27 +127,33 @@ public sealed class ViewerDatabase
             throw new InvalidOperationException(
                 $"viewer.db のスキーマバージョン {stored} はこのアプリ (v{SchemaVersion}) より新しいため開けません。");
         }
+        // 逐次マイグレーション (派生データはリセット、users / read_state は保全)
         if (stored < 2)
-            MigrateV1ToV2(conn);
+            Migrate(conn, 2, """
+                ALTER TABLE users  ADD COLUMN icon_url TEXT;
+                ALTER TABLE tweets ADD COLUMN rt_icon_url TEXT;
+                ALTER TABLE tweets ADD COLUMN quoted_icon_url TEXT;
+                """);
+        if (stored < 3)
+            Migrate(conn, 3, """
+                ALTER TABLE tweet_media ADD COLUMN origin INTEGER NOT NULL DEFAULT 0;
+                """);
     }
 
     /// <summary>
-    /// v1 → v2: アイコン URL 列を追加し、派生データ (tweets/tweet_media) を
-    /// リセットして次回取込で新列を埋める。users / read_state は保全。
+    /// 列追加 → 派生データ (tweets/tweet_media) をリセットして次回取込で
+    /// 新列を埋める、の定型マイグレーション。
     /// </summary>
-    private static void MigrateV1ToV2(SqliteConnection conn)
+    private static void Migrate(SqliteConnection conn, int toVersion, string alterSql)
     {
         using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
-        cmd.CommandText = """
-            ALTER TABLE users  ADD COLUMN icon_url TEXT;
-            ALTER TABLE tweets ADD COLUMN rt_icon_url TEXT;
-            ALTER TABLE tweets ADD COLUMN quoted_icon_url TEXT;
+        cmd.CommandText = alterSql + $"""
             DELETE FROM tweet_media;
             DELETE FROM tweets;
             UPDATE users SET jsonl_offset = 0;
-            UPDATE schema_meta SET value = '2' WHERE key = 'schema_version';
+            UPDATE schema_meta SET value = '{toVersion}' WHERE key = 'schema_version';
             """;
         cmd.ExecuteNonQuery();
         tx.Commit();

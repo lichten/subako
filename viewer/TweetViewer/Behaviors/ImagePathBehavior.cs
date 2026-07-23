@@ -23,7 +23,7 @@ public static class ImagePathBehavior
     public static string? GetPath(DependencyObject obj) => (string?)obj.GetValue(PathProperty);
     public static void SetPath(DependencyObject obj, string? value) => obj.SetValue(PathProperty, value);
 
-    /// <summary>デコード幅 (既定 400)。アイコンなど小さい画像には小さい値を指定する。</summary>
+    /// <summary>デコード幅 (既定 400)。0 以下で原寸デコード。アイコン等は小さい値を指定。</summary>
     public static readonly DependencyProperty DecodeWidthProperty =
         DependencyProperty.RegisterAttached(
             "DecodeWidth", typeof(int), typeof(ImagePathBehavior),
@@ -58,7 +58,8 @@ public static class ImagePathBehavior
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.UriSource = new Uri(path);
-            bitmap.DecodePixelWidth = decodeWidth;
+            if (decodeWidth > 0)
+                bitmap.DecodePixelWidth = decodeWidth;
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
             bitmap.EndInit();
             bitmap.Freeze();

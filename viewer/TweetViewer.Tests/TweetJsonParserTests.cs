@@ -95,8 +95,8 @@ public class TweetJsonParserTests
                          {"type":"photo","link":"https://pbs.twimg.com/media/DEF456.png","preview":""}]}
             """.ReplaceLineEndings(""));
         Assert.Equal(2, parsed.Media.Count);
-        Assert.Equal(new TweetMediaRow("55", 1, "https://pbs.twimg.com/media/ABC123.jpg", "jpg"), parsed.Media[0]);
-        Assert.Equal(new TweetMediaRow("55", 2, "https://pbs.twimg.com/media/DEF456.png", "png"), parsed.Media[1]);
+        Assert.Equal(new TweetMediaRow("55", 1, "https://pbs.twimg.com/media/ABC123.jpg", "jpg", MediaOrigin.Own), parsed.Media[0]);
+        Assert.Equal(new TweetMediaRow("55", 2, "https://pbs.twimg.com/media/DEF456.png", "png", MediaOrigin.Own), parsed.Media[1]);
         Assert.Equal(2, parsed.Row.MediaCount);
     }
 
@@ -122,7 +122,21 @@ public class TweetJsonParserTests
         Assert.Equal(2, parsed.Media.Count);
         Assert.Equal(1, parsed.Media[0].Index);
         Assert.Equal("https://pbs.twimg.com/media/SAME.jpg", parsed.Media[0].SourceUrl);
+        Assert.Equal(MediaOrigin.Own, parsed.Media[0].Origin);       // 本文優先 (先勝ち)
         Assert.Equal("https://pbs.twimg.com/media/OTHER.jpg", parsed.Media[1].SourceUrl);
+        Assert.Equal(MediaOrigin.Quoted, parsed.Media[1].Origin);
+    }
+
+    [Fact]
+    public void MediaOriginFromRetweetedStatus()
+    {
+        var parsed = ParseOk("""
+            {"id":"88","full_text":"RT @a: x",
+             "retweeted_status":{"id":"89","full_text":"x","user":{"username":"a"},
+               "entities":[{"type":"photo","link":"https://pbs.twimg.com/media/RTIMG.jpg"}]}}
+            """.ReplaceLineEndings(""));
+        Assert.Single(parsed.Media);
+        Assert.Equal(MediaOrigin.Retweeted, parsed.Media[0].Origin);
     }
 
     [Fact]

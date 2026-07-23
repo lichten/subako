@@ -162,6 +162,37 @@ public sealed class JsonlImporterTests : IDisposable
     }
 
     [Fact]
+    public async Task MediaPageReturnsOwnMediaOnlyExcludingRetweets()
+    {
+        var users = new UserRepository(_db);
+        await users.AddAsync("grace");
+        WriteJsonl("grace",
+            // 本文画像2枚 (最新)
+            """{"id":"4","created_at":"Tue Jul 21 20:23:54 +0000 2026","full_text":"own2","entities":[{"type":"photo","link":"https://pbs.twimg.com/media/A1.jpg"},{"type":"photo","link":"https://pbs.twimg.com/media/A2.jpg"}]}""",
+            // 引用: 本文画像1枚 + 引用先画像1枚
+            """{"id":"3","created_at":"Wed Oct 10 20:19:24 +0000 2018","full_text":"quote","entities":[{"type":"photo","link":"https://pbs.twimg.com/media/B1.jpg"}],"quoted_status":{"id":"30","full_text":"q","entities":[{"type":"photo","link":"https://pbs.twimg.com/media/QB.jpg"}]}}""",
+            // RT: RT元画像のみ → メディア欄に出ない
+            """{"id":"2","created_at":"Wed Oct 10 10:00:00 +0000 2018","full_text":"RT @a: x","retweeted_status":{"id":"20","full_text":"x","entities":[{"type":"photo","link":"https://pbs.twimg.com/media/RT1.jpg"}]}}""",
+            // 画像なし
+            """{"id":"1","created_at":"Wed Apr 11 08:26:14 +0000 2007","full_text":"plain","entities":[]}""");
+        var importer = new JsonlImporter(_db);
+        await importer.ImportUserAsync("grace");
+
+        var tweets = new TweetRepository(_db);
+        var page = await tweets.GetMediaPageAsync("grace", after: null, limit: 10);
+        // 本文画像のみ・新しい順・同一ツイート内は idx 昇順
+        Assert.Equal(new[] { ("4", 1), ("4", 2), ("3", 1) },
+            page.Select(m => (m.TweetId, m.Idx)));
+
+        // keyset ページング (limit 2 → 続き)
+        var p1 = await tweets.GetMediaPageAsync("grace", null, 2);
+        var last = p1[^1];
+        var p2 = await tweets.GetMediaPageAsync("grace", (last.SortKey, last.IdInt, last.Idx), 2);
+        Assert.Equal(new[] { ("4", 1), ("4", 2) }, p1.Select(m => (m.TweetId, m.Idx)));
+        Assert.Equal(new[] { ("3", 1) }, p2.Select(m => (m.TweetId, m.Idx)));
+    }
+
+    [Fact]
     public async Task ByteOffsetsSurviveMultibyteText()
     {
         var users = new UserRepository(_db);

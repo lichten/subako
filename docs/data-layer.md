@@ -77,7 +77,7 @@ data/
 DELETE しても既読状態は残る。孤児行(対応ツイートが無い read_state)は
 無害であり、**削除してはならない**。
 
-### 4.2 DDL(schema_version = 2)
+### 4.2 DDL(schema_version = 3)
 
 ```sql
 CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -120,6 +120,7 @@ CREATE TABLE tweet_media (
   idx        INTEGER NOT NULL,             -- §3 の 1 始まり index
   source_url TEXT,
   ext        TEXT NOT NULL,                -- §3 の拡張子規則
+  origin     INTEGER NOT NULL DEFAULT 0,   -- 0=本文 / 1=引用先 / 2=RT元 (§3 の列挙順に対応)
   PRIMARY KEY (tweet_id, idx)
 ) WITHOUT ROWID;
 
@@ -141,6 +142,7 @@ CREATE INDEX ix_read_state_user ON read_state(username);
   リセットし `jsonl_offset = 0` にして再取込させてよい。正データ
   (`users` の既存行・`read_state`)は必ず保全すること。
   v1 → v2 の差分: `users.icon_url` / `tweets.rt_icon_url` / `tweets.quoted_icon_url` の追加。
+  v2 → v3 の差分: `tweet_media.origin` の追加(メディア欄 = `origin=0 AND tweet_type != 1` で抽出)。
 
 ## 5. 取込(JSONL → SQLite)の契約
 

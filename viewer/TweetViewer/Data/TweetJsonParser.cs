@@ -156,21 +156,22 @@ public static partial class TweetJsonParser
         var result = new List<TweetMediaRow>();
         var seen = new HashSet<string>();
 
-        var targets = new List<JsonElement> { root };
+        // 列挙順は media.py と同一 (本文 → 引用 → RT)。URL 重複は先勝ち=本文優先
+        var targets = new List<(JsonElement Element, MediaOrigin Origin)> { (root, MediaOrigin.Own) };
         foreach (var key in NestedKeys)
         {
             if (GetObject(root, key) is { } nested)
-                targets.Add(nested);
+                targets.Add((nested, key.StartsWith("quoted") ? MediaOrigin.Quoted : MediaOrigin.Retweeted));
         }
 
-        foreach (var target in targets)
+        foreach (var (target, origin) in targets)
         {
             foreach (var entry in IterMediaEntries(target))
             {
                 var url = PickImageUrl(entry);
                 if (url is null || !seen.Add(url))
                     continue;
-                result.Add(new TweetMediaRow(tweetId, result.Count + 1, url, ExtOf(url)));
+                result.Add(new TweetMediaRow(tweetId, result.Count + 1, url, ExtOf(url), origin));
             }
         }
         return result;

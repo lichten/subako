@@ -1,0 +1,123 @@
+using System.Collections.ObjectModel;
+using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using TweetViewer.Data;
+using TweetViewer.Services;
+
+namespace TweetViewer.ViewModels;
+
+public sealed class MediaItemViewModel
+{
+    public required string TweetId { get; init; }
+    public required string Username { get; init; }
+    public string? LocalPath { get; init; }
+    public required string FullText { get; init; }
+    public required string CreatedAtUtc { get; init; }
+
+    public string CreatedAtLocal =>
+        DateTimeOffset.TryParse(CreatedAtUtc, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal, out var dto)
+            ? dto.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)
+            : CreatedAtUtc;
+}
+
+/// <summary>1行 = 最大3セルの正方形サムネイル (行単位で仮想化するため)。</summary>
+public sealed class MediaRowViewModel
+{
+    public required IReadOnlyList<MediaItemViewModel> Cells { get; init; }
+}
+
+public sealed partial class MediaGridViewModel : ObservableObject
+{
+    private const int Columns = 3;
+    private const int PageSize = 120;   // 40行分
+
+    private readonly ViewerDatabase _db;
+    private readonly TweetRepository _repo;
+
+    private string? _username;
+    private (long SortKey, long IdInt, int Idx)? _cursor;
+    private bool _loading;
+    private int _resetVersion;
+
+    public ObservableCollection<MediaRowViewModel> Rows { get; } = new();
+
+    /// <summary>ビューアの ←/→ 用フラットリスト (ロード済み分)。</summary>
+    public List<MediaItemViewModel> FlatItems { get; } = new();
+
+    [ObservableProperty]
+    private bool _hasMore;
+
+    public MediaGridViewModel(ViewerDatabase db, TweetRepository repo)
+    {
+        _db = db;
+        _repo = repo;
+    }
+
+    public async Task ResetAsync(string? username)
+    {
+        var version = ++_resetVersion;
+        _username = username;
+        _cursor = null;
+        Rows.Clear();
+        FlatItems.Clear();
+        HasMore = username is not null;
+        if (username is not null)
+            await LoadMoreCoreAsync(version);
+    }
+
+    [RelayCommand]
+    private Task LoadMore() => LoadMoreCoreAsync(_resetVersion);
+
+    private async Task LoadMoreCoreAsync(int version)
+    {
+        if (_loading || !HasMore || _username is not { } username)
+            return;
+        _loading = true;
+        try
+        {
+            var page = await _repo.GetMediaPageAsync(username, _cursor, PageSize);
+            if (version != _resetVersion)
+                return;
+
+            var imagesDir = _db.ImagesDir(username);
+            var items = await Task.Run(() => page
+                .Select(r => new MediaItemViewModel
+                {
+                    TweetId = r.TweetId,
+                    Username = username,
+                    LocalPath = LocalMediaFiles.Resolve(imagesDir, r.TweetId, r.Idx, r.Ext),
+                    FullText = r.FullText,
+                    CreatedAtUtc = r.CreatedAtUtc,
+                })
+                .ToList());
+            if (version != _resetVersion)
+                return;
+
+            FlatItems.AddRange(items);
+            // 末尾の不完全行があれば作り直して詰める
+            if (Rows.Count > 0 && Rows[^1].Cells.Count < Columns)
+                Rows.RemoveAt(Rows.Count - 1);
+            var offset = Rows.Count * Columns;
+            for (var i = offset; i < FlatItems.Count; i += Columns)
+            {
+                Rows.Add(new MediaRowViewModel
+                {
+                    Cells = FlatItems.Skip(i).Take(Columns).ToList(),
+                });
+            }
+
+            if (page.Count > 0)
+            {
+                var last = page[^1];
+                _cursor = (last.SortKey, last.IdInt, last.Idx);
+            }
+            HasMore = page.Count == PageSize;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

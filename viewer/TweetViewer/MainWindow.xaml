@@ -90,15 +90,25 @@
         <DockPanel Grid.Row="0" Grid.Column="1">
             <ToolBarTray DockPanel.Dock="Top">
                 <ToolBar>
-                    <ToggleButton IsChecked="{Binding UnreadOnly}" Content="未読のみ" Padding="8,2" />
+                    <RadioButton Content="タイムライン" GroupName="ViewMode" Padding="8,2"
+                                 IsChecked="{Binding IsMediaView, Converter={StaticResource InverseBool}}" />
+                    <RadioButton Content="メディア" GroupName="ViewMode" Padding="8,2"
+                                 IsChecked="{Binding IsMediaView}" />
+                    <Separator />
+                    <ToggleButton IsChecked="{Binding UnreadOnly}" Content="未読のみ" Padding="8,2"
+                                  IsEnabled="{Binding IsMediaView, Converter={StaticResource InverseBool}}" />
                     <Separator />
                     <Button Content="インデックス再構築" Command="{Binding RebuildCommand}" Padding="8,2"
                             ToolTip="選択中ユーザーの tweets インデックスを JSONL から作り直します(既読状態は保持)" />
                 </ToolBar>
             </ToolBarTray>
 
+            <Grid>
             <ListBox x:Name="TweetList"
                      ItemsSource="{Binding Items}"
+                     Visibility="{Binding DataContext.IsMediaView,
+                         RelativeSource={RelativeSource AncestorType=Window},
+                         Converter={StaticResource InverseBoolToVis}}"
                      BorderThickness="0"
                      HorizontalContentAlignment="Stretch"
                      VirtualizingPanel.IsVirtualizing="True"
@@ -240,6 +250,57 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <!-- メディアグリッド (3列正方形サムネイル、行単位で仮想化) -->
+            <ListBox x:Name="MediaList"
+                     DataContext="{Binding MediaGrid}"
+                     ItemsSource="{Binding Rows}"
+                     Visibility="{Binding DataContext.IsMediaView,
+                         RelativeSource={RelativeSource AncestorType=Window},
+                         Converter={StaticResource BoolToVis}}"
+                     BorderThickness="0"
+                     HorizontalContentAlignment="Stretch"
+                     VirtualizingPanel.IsVirtualizing="True"
+                     VirtualizingPanel.VirtualizationMode="Recycling"
+                     VirtualizingPanel.ScrollUnit="Pixel"
+                     ScrollViewer.CanContentScroll="True"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <b:Interaction.Behaviors>
+                    <behaviors:InfiniteScrollBehavior LoadMoreCommand="{Binding LoadMoreCommand}" />
+                </b:Interaction.Behaviors>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Focusable" Value="False" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:MediaRowViewModel}">
+                        <ItemsControl ItemsSource="{Binding Cells}"
+                                      Height="{Binding ActualWidth,
+                                          RelativeSource={RelativeSource AncestorType=ListBox},
+                                          Converter={StaticResource Divide}, ConverterParameter=3}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="3" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:MediaItemViewModel}">
+                                    <Border Margin="1" Background="#ECECEC" ClipToBounds="True"
+                                            Cursor="Hand" MouseLeftButtonUp="MediaCell_Click">
+                                        <Image behaviors:ImagePathBehavior.Path="{Binding LocalPath}"
+                                               behaviors:ImagePathBehavior.DecodeWidth="240"
+                                               Stretch="UniformToFill" />
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            </Grid>
         </DockPanel>
 
         <!-- ステータスバー -->

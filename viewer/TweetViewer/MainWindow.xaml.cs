@@ -65,6 +65,19 @@ public partial class MainWindow : Window
         _ = RunFetchAsync(dialogVm);
     }
 
+    private void MediaCell_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: MediaItemViewModel item })
+            return;
+        // ロード済みリストのスナップショットで前後移動できるビューアを開く
+        var items = Vm.MediaGrid.FlatItems.ToList();
+        var index = items.IndexOf(item);
+        if (index < 0)
+            return;
+        var viewer = new MediaViewerWindow(items, index) { Owner = this };
+        viewer.Show();
+    }
+
     private async Task RunFetchAsync(FetchDialogViewModel dialogVm)
     {
         try

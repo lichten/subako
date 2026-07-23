@@ -9,8 +9,6 @@ namespace TweetViewer.ViewModels;
 
 public sealed partial class TweetItemViewModel : ObservableObject
 {
-    private static readonly string[] ProbeExtensions = { "jpg", "png", "webp", "gif", "jpeg" };
-
     private readonly TweetListViewModel _owner;
 
     public TweetRow Row { get; }
@@ -111,22 +109,9 @@ public sealed partial class TweetItemViewModel : ObservableObject
 
     private static List<string> ResolveImagePaths(IReadOnlyList<TweetMediaRow> media, string imagesDir)
     {
-        var paths = new List<string>(media.Count);
-        foreach (var m in media)
-        {
-            var expected = Path.Combine(imagesDir, $"{m.TweetId}_{m.Index}.{m.Ext}");
-            if (File.Exists(expected))
-            {
-                paths.Add(expected);
-                continue;
-            }
-            // 拡張子不一致(format クエリ違い等)に備えて探索
-            var found = ProbeExtensions
-                .Select(ext => Path.Combine(imagesDir, $"{m.TweetId}_{m.Index}.{ext}"))
-                .FirstOrDefault(File.Exists);
-            if (found is not null)
-                paths.Add(found);
-        }
-        return paths;
+        return media
+            .Select(m => LocalMediaFiles.Resolve(imagesDir, m.TweetId, m.Index, m.Ext))
+            .OfType<string>()
+            .ToList();
     }
 }

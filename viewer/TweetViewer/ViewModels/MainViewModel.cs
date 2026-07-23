@@ -13,8 +13,13 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly JsonlImporter _importer;
 
     public TweetListViewModel TweetList { get; }
+    public MediaGridViewModel MediaGrid { get; }
     public FetchProcessService FetchService { get; }
     public JsonlImporter Importer => _importer;
+
+    /// <summary>true = メディア欄、false = タイムライン。</summary>
+    [ObservableProperty]
+    private bool _isMediaView;
 
     public ObservableCollection<UserItemViewModel> Users { get; } = new();
 
@@ -47,6 +52,7 @@ public sealed partial class MainViewModel : ObservableObject
         FetchService = fetchService;
         TweetList = new TweetListViewModel(db, tweets, readQueue, iconCache);
         TweetList.UnreadDelta += OnUnreadDelta;
+        MediaGrid = new MediaGridViewModel(db, tweets);
     }
 
     /// <summary>起動時: data/ 直下の既存アーカイブを登録 → 全ユーザー差分取込 → 一覧表示。</summary>
@@ -104,10 +110,14 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnUnreadOnlyChanged(bool value) => _ = ResetListAsync();
 
+    partial void OnIsMediaViewChanged(bool value) => _ = ResetListAsync();
+
     private Task ResetListAsync() =>
-        TweetList.ResetAsync(
-            SelectedUser?.Username, SelectedUser?.DisplayName ?? "",
-            SelectedUser?.IconUrl, UnreadOnly);
+        IsMediaView
+            ? MediaGrid.ResetAsync(SelectedUser?.Username)
+            : TweetList.ResetAsync(
+                SelectedUser?.Username, SelectedUser?.DisplayName ?? "",
+                SelectedUser?.IconUrl, UnreadOnly);
 
     private void OnUnreadDelta(string username, long delta)
     {

@@ -73,7 +73,7 @@ public sealed class SchemaMigrationTests : IDisposable
     }
 
     [Fact]
-    public void V1DatabaseMigratesToV2PreservingAuthoritativeData()
+    public void V1DatabaseMigratesToLatestPreservingAuthoritativeData()
     {
         CreateV1Database();
         SqliteConnection.ClearAllPools();
@@ -89,11 +89,14 @@ public sealed class SchemaMigrationTests : IDisposable
             return cmd.ExecuteScalar();
         }
 
-        // バージョンが 2 に更新されている
-        Assert.Equal("2", (string)Scalar("SELECT value FROM schema_meta WHERE key='schema_version'")!);
+        // 最新バージョンまで逐次マイグレーションされている
+        Assert.Equal(
+            ViewerDatabase.SchemaVersion.ToString(),
+            (string)Scalar("SELECT value FROM schema_meta WHERE key='schema_version'")!);
         // 新列が存在する (SELECT が例外にならない)
         Assert.Equal(0L, Scalar("SELECT COUNT(icon_url) FROM users"));
         Assert.Equal(0L, Scalar("SELECT COUNT(rt_icon_url) + COUNT(quoted_icon_url) FROM tweets"));
+        Assert.Equal(0L, Scalar("SELECT COUNT(origin) FROM tweet_media"));
         // 派生データはリセットされ、再取込のためオフセットも 0
         Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM tweets"));
         Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM tweet_media"));

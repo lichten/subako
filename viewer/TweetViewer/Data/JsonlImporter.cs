@@ -264,13 +264,14 @@ public sealed class JsonlImporter
                 using var mc = conn.CreateCommand();
                 mc.Transaction = tx;
                 mc.CommandText = """
-                    INSERT OR IGNORE INTO tweet_media (tweet_id, idx, source_url, ext)
-                    VALUES ($id, $ix, $url, $ext)
+                    INSERT OR IGNORE INTO tweet_media (tweet_id, idx, source_url, ext, origin)
+                    VALUES ($id, $ix, $url, $ext, $or)
                     """;
                 mc.Parameters.AddWithValue("$id", m.TweetId);
                 mc.Parameters.AddWithValue("$ix", m.Index);
                 mc.Parameters.AddWithValue("$url", (object?)m.SourceUrl ?? DBNull.Value);
                 mc.Parameters.AddWithValue("$ext", m.Ext);
+                mc.Parameters.AddWithValue("$or", (int)m.Origin);
                 mc.ExecuteNonQuery();
             }
         }

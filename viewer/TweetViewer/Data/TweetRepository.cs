@@ -5,6 +5,10 @@ namespace TweetViewer.Data;
 
 public sealed record TweetPage(IReadOnlyList<TweetRow> Rows, IReadOnlyDictionary<string, List<TweetMediaRow>> Media);
 
+public sealed record MediaPageRow(
+    string TweetId, int Idx, string Ext, long SortKey, long IdInt,
+    string FullText, string CreatedAtUtc);
+
 public sealed class TweetRepository
 {
     private readonly ViewerDatabase _db;
@@ -103,18 +107,71 @@ public sealed class TweetRepository
             cmd.Parameters.AddWithValue(name, tweetIds[i]);
         }
         cmd.CommandText =
-            $"SELECT tweet_id, idx, source_url, ext FROM tweet_media WHERE tweet_id IN ({string.Join(",", names)}) ORDER BY tweet_id, idx";
+            $"SELECT tweet_id, idx, source_url, ext, origin FROM tweet_media WHERE tweet_id IN ({string.Join(",", names)}) ORDER BY tweet_id, idx";
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
             var row = new TweetMediaRow(
                 reader.GetString(0), reader.GetInt32(1),
-                reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3));
+                reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3),
+                (MediaOrigin)reader.GetInt32(4));
             if (!result.TryGetValue(row.TweetId, out var list))
                 result[row.TweetId] = list = new List<TweetMediaRow>();
             list.Add(row);
         }
         return result;
+    }
+
+    /// <summary>
+    /// メディア欄用: 本人の投稿画像のみ (origin=0、RT 除外) を新しい順に。
+    /// keyset カーソルは (sort_key, id_int, idx) の3要素。
+    /// </summary>
+    public Task<List<MediaPageRow>> GetMediaPageAsync(
+        string username, (long SortKey, long IdInt, int Idx)? after, int limit,
+        CancellationToken ct = default)
+    {
+        return Task.Run(() =>
+        {
+            using var conn = _db.OpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT m.tweet_id, m.idx, m.ext, t.sort_key, t.id_int,
+                       t.full_text, t.created_at_utc
+                FROM tweet_media m
+                JOIN tweets t ON t.tweet_id = m.tweet_id
+                WHERE t.username = $u
+                  AND m.origin = 0
+                  AND t.tweet_type != 1
+                  AND ($noCursor = 1
+                       OR t.sort_key < $sk
+                       OR (t.sort_key = $sk AND t.id_int < $ii)
+                       OR (t.sort_key = $sk AND t.id_int = $ii AND m.idx > $ix))
+                ORDER BY t.sort_key DESC, t.id_int DESC, m.idx ASC
+                LIMIT $limit
+                """;
+            cmd.Parameters.AddWithValue("$u", username);
+            cmd.Parameters.AddWithValue("$noCursor", after is null ? 1 : 0);
+            cmd.Parameters.AddWithValue("$sk", after?.SortKey ?? 0);
+            cmd.Parameters.AddWithValue("$ii", after?.IdInt ?? 0);
+            cmd.Parameters.AddWithValue("$ix", after?.Idx ?? 0);
+            cmd.Parameters.AddWithValue("$limit", limit);
+
+            var rows = new List<MediaPageRow>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                ct.ThrowIfCancellationRequested();
+                rows.Add(new MediaPageRow(
+                    TweetId: reader.GetString(0),
+                    Idx: reader.GetInt32(1),
+                    Ext: reader.GetString(2),
+                    SortKey: reader.GetInt64(3),
+                    IdInt: reader.GetInt64(4),
+                    FullText: reader.GetString(5),
+                    CreatedAtUtc: reader.GetString(6)));
+            }
+            return rows;
+        }, ct);
     }
 
     /// <summary>手動トグル用の即時書込。</summary>
