@@ -30,7 +30,7 @@ public sealed class ScrollReadBehavior : Behavior<ListBox>
     {
         AssociatedObject.Loaded -= OnLoaded;
         AssociatedObject.Unloaded -= OnUnloaded;
-        Detach();
+        Unhook();
         base.OnDetaching();
     }
 
@@ -46,9 +46,9 @@ public sealed class ScrollReadBehavior : Behavior<ListBox>
         _timer.Start();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) => Detach();
+    private void OnUnloaded(object sender, RoutedEventArgs e) => Unhook();
 
-    private void Detach()
+    private void Unhook()
     {
         if (_scrollViewer is not null)
             _scrollViewer.ScrollChanged -= OnScrollChanged;
