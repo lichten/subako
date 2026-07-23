@@ -13,7 +13,7 @@ import sys
 from dotenv import load_dotenv
 
 from sorsa_fetcher.client import SorsaClient, SorsaApiError
-from sorsa_fetcher.fetcher import TweetFetcher
+from sorsa_fetcher.fetcher import RequestBudgetExhausted, TweetFetcher
 from sorsa_fetcher.media import MediaDownloader
 from sorsa_fetcher.storage import Storage
 
@@ -35,6 +35,9 @@ def main():
                         help="先頭からページングし、ページ全体が既知ツイートになったら停止する差分取得")
     parser.add_argument("--rps", type=float, default=5.0,
                         help="1秒あたりのリクエスト数上限 (既定: 5、Sorsa の上限は 20)")
+    parser.add_argument("--max-requests", type=int, default=None,
+                        help="この実行で消費する API リクエスト数の上限。到達したら中断し (exit 10)、"
+                             "再実行で続きから再開する")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -58,7 +61,8 @@ def main():
 
     downloader = None if args.skip_images else MediaDownloader(storage.images_dir)
     fetcher = TweetFetcher(client, storage, username,
-                           downloader=downloader, max_pages=args.max_pages)
+                           downloader=downloader, max_pages=args.max_pages,
+                           max_requests=args.max_requests)
 
     try:
         if args.update:
@@ -71,6 +75,12 @@ def main():
             if args.backfill:
                 created_at = report.get("account_created_at") if report else None
                 fetcher.backfill(account_created_at=created_at)
+    except RequestBudgetExhausted:
+        logger.warning(
+            "リクエスト上限 %d に達したため中断しました。再実行すると続きから再開します",
+            args.max_requests,
+        )
+        return 10
     except SorsaApiError as exc:
         logger.error("API エラーで中断しました: %s", exc)
         logger.error("再実行すれば途中から再開できます")

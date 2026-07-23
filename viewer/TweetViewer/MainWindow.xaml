@@ -34,7 +34,13 @@
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:UserItemViewModel}">
-                        <Grid Margin="4,6">
+                        <Grid Margin="4,6" Background="Transparent">
+                            <Grid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="更新 (差分取得)" Click="MenuUpdate_Click" />
+                                    <MenuItem Header="全期間を取得 (バックフィル)..." Click="MenuBackfill_Click" />
+                                </ContextMenu>
+                            </Grid.ContextMenu>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />

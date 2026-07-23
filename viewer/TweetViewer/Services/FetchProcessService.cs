@@ -7,7 +7,7 @@ namespace TweetViewer.Services;
 public enum FetchMode
 {
     Update,
-    // 将来拡張: Backfill, Full
+    Backfill,
 }
 
 public sealed record FetchResult(int ExitCode, bool Cancelled);
@@ -24,7 +24,7 @@ public sealed class FetchProcessService
     public FetchProcessService(AppSettings settings) => _settings = settings;
 
     public async Task<FetchResult> RunAsync(
-        string username, FetchMode mode, IProgress<string> log, CancellationToken ct)
+        string username, FetchMode mode, int? maxRequests, IProgress<string> log, CancellationToken ct)
     {
         var psi = new ProcessStartInfo
         {
@@ -44,6 +44,14 @@ public sealed class FetchProcessService
             case FetchMode.Update:
                 psi.ArgumentList.Add("--update");
                 break;
+            case FetchMode.Backfill:
+                psi.ArgumentList.Add("--backfill");
+                break;
+        }
+        if (maxRequests is { } limit)
+        {
+            psi.ArgumentList.Add("--max-requests");
+            psi.ArgumentList.Add(limit.ToString());
         }
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONUTF8"] = "1";
@@ -52,7 +60,7 @@ public sealed class FetchProcessService
         process.OutputDataReceived += (_, e) => { if (e.Data is not null) log.Report(e.Data); };
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) log.Report(e.Data); };
 
-        log.Report($"> {psi.FileName} main.py {username} --update");
+        log.Report($"> {psi.FileName} {string.Join(' ', psi.ArgumentList)}");
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();

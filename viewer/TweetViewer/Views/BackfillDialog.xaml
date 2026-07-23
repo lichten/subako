@@ -1,0 +1,35 @@
+<Window x:Class="TweetViewer.Views.BackfillDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="全期間を取得 (バックフィル)" Height="260" Width="440"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        WindowStyle="ToolWindow">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock TextWrapping="Wrap">
+            検索 API (/search-tweets) で過去のツイートを月単位に遡って取得します。
+            大きなアカウントでは数千リクエストかかるため、この実行で消費する
+            API リクエスト数の上限を指定してください。
+        </TextBlock>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="最大リクエスト数:" VerticalAlignment="Center" />
+            <TextBox x:Name="MaxRequestsBox" Width="90" Margin="8,0,0,0" FontSize="14"
+                     Text="500" VerticalContentAlignment="Center" />
+        </StackPanel>
+        <TextBlock Grid.Row="2" TextWrapping="Wrap" Foreground="#666" FontSize="12"
+                   Margin="0,10,0,0">
+            上限に達した場合は安全に中断され、取得済み分は保存されます。
+            もう一度実行すると前回の続きから再開します。
+        </TextBlock>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom">
+            <Button Content="開始" Width="80" IsDefault="True" Click="Ok_Click" />
+            <Button Content="キャンセル" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

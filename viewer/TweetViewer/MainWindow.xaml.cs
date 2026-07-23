@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using TweetViewer.Services;
 using TweetViewer.ViewModels;
 using TweetViewer.Views;
 
@@ -26,7 +27,7 @@ public partial class MainWindow : Window
                     $"@{added.Username} を追加しました。今すぐツイートを取得しますか?",
                     "TweetViewer", MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (run == MessageBoxResult.Yes)
-                    StartUpdate(added.Username);
+                    StartFetch(added.Username, FetchMode.Update, maxRequests: null);
             }
         }
     }
@@ -34,15 +35,31 @@ public partial class MainWindow : Window
     private void UpdateUser_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: UserItemViewModel user })
-            StartUpdate(user.Username);
+            StartFetch(user.Username, FetchMode.Update, maxRequests: null);
     }
 
-    private void StartUpdate(string username)
+    private void MenuUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { DataContext: UserItemViewModel user })
+            StartFetch(user.Username, FetchMode.Update, maxRequests: null);
+    }
+
+    private void MenuBackfill_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: UserItemViewModel user } || Vm.IsFetching)
+            return;
+        var dialog = new BackfillDialog { Owner = this };
+        if (dialog.ShowDialog() == true)
+            StartFetch(user.Username, FetchMode.Backfill, dialog.MaxRequests);
+    }
+
+    private void StartFetch(string username, FetchMode mode, int? maxRequests)
     {
         if (Vm.IsFetching)
             return;
         Vm.IsFetching = true;
-        var dialogVm = new FetchDialogViewModel(Vm.FetchService, username, Vm.OnFetchCompletedAsync);
+        var dialogVm = new FetchDialogViewModel(
+            Vm.FetchService, username, Vm.OnFetchCompletedAsync, mode, maxRequests);
         var window = new UpdateLogWindow { Owner = this, DataContext = dialogVm };
         window.Show();
         _ = RunFetchAsync(dialogVm);

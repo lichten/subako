@@ -17,6 +17,10 @@ _MIN_WINDOW_DAYS = 2
 # cursor 付きの空ページがこの回数連続したら異常とみなして打ち切る
 _MAX_CONSECUTIVE_EMPTY_PAGES = 3
 
+
+class RequestBudgetExhausted(Exception):
+    """--max-requests のリクエスト予算を使い切った(進捗は保存済み・再実行で再開可)。"""
+
 _DATE_FORMATS = (
     "%a %b %d %H:%M:%S %z %Y",   # 旧Twitter形式: Wed Oct 10 20:19:24 +0000 2018
     "%Y-%m-%dT%H:%M:%S%z",
@@ -43,13 +47,20 @@ def parse_created_at(value):
 
 
 class TweetFetcher:
-    def __init__(self, client, storage, username, downloader=None, max_pages=None):
+    def __init__(self, client, storage, username, downloader=None, max_pages=None,
+                 max_requests=None):
         self.client = client
         self.storage = storage
         self.username = username
         self.downloader = downloader
         self.max_pages = max_pages
+        self.max_requests = max_requests
         self.total_new = 0
+
+    def _check_budget(self):
+        """次のリクエストを出す前に予算を確認する。到達していたら例外で綺麗に巻き戻す。"""
+        if self.max_requests is not None and self.client.request_count >= self.max_requests:
+            raise RequestBudgetExhausted(self.max_requests)
 
     def _handle_page(self, tweets):
         new_tweets = self.storage.append_tweets(tweets)
@@ -73,6 +84,7 @@ class TweetFetcher:
             if self.max_pages is not None and page >= self.max_pages:
                 logger.info("--max-pages 上限 (%d) に達したので中断します", self.max_pages)
                 break
+            self._check_budget()
             resp = self.client.user_tweets(self.username, cursor=cursor)
             tweets = resp.get("tweets") or []
             page += 1
@@ -124,6 +136,7 @@ class TweetFetcher:
             if self.max_pages is not None and page >= self.max_pages:
                 logger.info("--max-pages 上限 (%d) に達したので中断します", self.max_pages)
                 break
+            self._check_budget()
             resp = self.client.user_tweets(self.username, cursor=cursor)
             tweets = resp.get("tweets") or []
             page += 1
@@ -203,9 +216,11 @@ class TweetFetcher:
         # 新しい側から過去へ月単位で遡る
         window_end = end
         while window_end > start:
+            self._check_budget()
             window_start = max(window_end - timedelta(days=30), start)
             self._backfill_window(window_start, window_end, done_windows, state)
             window_end = window_start
+        logger.info("バックフィル完了: 全期間の検索窓を処理しました")
 
     def _window_key(self, start, end):
         return f"{start.date()}..{end.date()}"
@@ -221,6 +236,7 @@ class TweetFetcher:
         cursor = None
         window_count = 0
         while True:
+            self._check_budget()
             resp = self.client.search_tweets(query, cursor=cursor)
             tweets = resp.get("tweets") or []
             window_count += len(tweets)

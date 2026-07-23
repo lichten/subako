@@ -18,9 +18,15 @@ public partial class UpdateLogWindow : Window
         {
             ((INotifyCollectionChanged)vm.LogLines).CollectionChanged += (_, args) =>
             {
-                // 追記時に自動スクロール
-                if (args.Action == NotifyCollectionChangedAction.Add && LogList.Items.Count > 0)
-                    LogList.ScrollIntoView(LogList.Items[^1]);
+                if (args.Action != NotifyCollectionChangedAction.Add)
+                    return;
+                // CollectionChanged 内で同期的に ScrollIntoView するとアイテム
+                // ジェネレーターが不整合を起こす (高頻度ログでクラッシュ) ため遅延実行
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+                {
+                    if (LogList.Items.Count > 0)
+                        LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+                });
             };
         }
     }
