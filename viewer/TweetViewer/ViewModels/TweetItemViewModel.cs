@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -72,6 +73,24 @@ public sealed partial class TweetItemViewModel : ObservableObject
 
     [RelayCommand]
     private Task ToggleRead() => _owner.ToggleReadAsync(this);
+
+    [RelayCommand]
+    private void OpenInBrowser()
+    {
+        // RT/引用でも X 側が id で正規ツイートへリダイレクトする
+        var url = $"https://x.com/{Row.Username}/status/{Row.TweetId}";
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"ブラウザを起動できませんでした: {ex.Message}",
+                "TweetViewer", System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+    }
 
     /// <summary>既読化(スクロール検知から)。二重呼び出しは owner 側で無視。</summary>
     public void MarkReadFromScroll() => _owner.MarkSeen(this);

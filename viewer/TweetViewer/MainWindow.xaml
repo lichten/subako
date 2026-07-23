@@ -98,6 +98,17 @@
                     <Style TargetType="ListBoxItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Padding" Value="0" />
+                        <Setter Property="ContextMenu">
+                            <Setter.Value>
+                                <ContextMenu>
+                                    <MenuItem Header="ブラウザで開く"
+                                              Command="{Binding OpenInBrowserCommand}" />
+                                    <Separator />
+                                    <MenuItem Header="既読/未読を切り替え"
+                                              Command="{Binding ToggleReadCommand}" />
+                                </ContextMenu>
+                            </Setter.Value>
+                        </Setter>
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
@@ -111,13 +122,6 @@
                                 <!-- 未読アクセントバー -->
                                 <Border x:Name="UnreadBar" Grid.Column="0" Width="3" Background="#1D9BF0" />
                                 <StackPanel Grid.Column="1" Margin="12,8">
-                                    <StackPanel.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="既読/未読を切り替え"
-                                                      Command="{Binding ToggleReadCommand}" />
-                                        </ContextMenu>
-                                    </StackPanel.ContextMenu>
-
                                     <!-- ヘッダ行 -->
                                     <DockPanel>
                                         <TextBlock DockPanel.Dock="Right" Text="{Binding CreatedAtLocal}"
