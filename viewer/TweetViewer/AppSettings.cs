@@ -12,11 +12,16 @@ public sealed class AppSettings
     public string RepoDir { get; set; } = "";
     public string PythonPath { get; set; } = "python";
 
+    /// <summary>データフォルダの場所。空なら RepoDir\data (従来動作)。</summary>
+    public string DataDir { get; set; } = "";
+
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "TweetViewer", "settings.json");
 
-    public string DataDir => Path.Combine(RepoDir, "data");
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string EffectiveDataDir =>
+        string.IsNullOrWhiteSpace(DataDir) ? Path.Combine(RepoDir, "data") : DataDir;
 
     public static AppSettings Load()
     {

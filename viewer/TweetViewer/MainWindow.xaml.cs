@@ -8,12 +8,21 @@ namespace TweetViewer;
 
 public partial class MainWindow : Window
 {
-    public MainWindow()
+    private readonly AppSettings _settings;
+
+    public MainWindow(AppSettings settings)
     {
         InitializeComponent();
+        _settings = settings;
     }
 
     private MainViewModel Vm => (MainViewModel)DataContext;
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SettingsDialog(_settings) { Owner = this };
+        dialog.ShowDialog();
+    }
 
     private async void AddUser_Click(object sender, RoutedEventArgs e)
     {

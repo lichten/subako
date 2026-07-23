@@ -1,0 +1,38 @@
+<Window x:Class="TweetViewer.Views.SettingsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="設定" Height="250" Width="560"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        WindowStyle="ToolWindow">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="データフォルダ (空欄 = リポジトリ内の data フォルダ):" />
+        <DockPanel Grid.Row="1" Margin="0,4,0,0">
+            <Button DockPanel.Dock="Right" Content="参照..." Padding="10,2" Margin="6,0,0,0"
+                    Click="Browse_Click" />
+            <TextBox x:Name="DataDirBox" VerticalContentAlignment="Center" />
+        </DockPanel>
+        <TextBlock Grid.Row="2" TextWrapping="Wrap" Foreground="#666" FontSize="12" Margin="0,6,0,0">
+            クラウド同期フォルダ (Google Drive 等) を指定して複数 PC で共有できます。
+            同時に開くのは 1 台にし、PC を切り替える前はアプリを閉じて同期完了を待ってください。
+        </TextBlock>
+
+        <StackPanel Grid.Row="3" Margin="0,12,0,0">
+            <TextBlock Text="Python パス:" />
+            <TextBox x:Name="PythonPathBox" Margin="0,4,0,0" VerticalContentAlignment="Center" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom">
+            <Button Content="保存" Width="80" IsDefault="True" Click="Ok_Click" />
+            <Button Content="キャンセル" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

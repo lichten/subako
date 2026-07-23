@@ -167,3 +167,10 @@ CREATE INDEX ix_read_state_user ON read_state(username);
 - `state.json` は fetcher 私有。ビューアは読み書きしない。
 - 同一ユーザーに対する fetcher(CLI/GUI 更新)の同時実行は非推奨
   (JSONL は行単位で整合するが、API リクエストが無駄になる)。
+- **データフォルダの場所**: `data/` 一式はポータブル。Windows ビューアでは
+  設定(データフォルダ)で任意の場所を指定でき、GUI からの取得は自動的に
+  `--output-dir` でその場所へ書き込む。CLI を手動実行する場合は
+  `--output-dir` を同じ場所に合わせること。
+- **クラウド同期フォルダでの共有**(Google Drive 等): 可能だが書き手は
+  常に1台に限ること。PC を切り替える前にビューアを閉じ(WAL チェックポイント
+  とフラッシュのため)、同期完了を待ってから他方で開く。

@@ -25,7 +25,7 @@ public partial class App : Application
         }
         settings.Save();
 
-        var db = new ViewerDatabase(settings.DataDir);
+        var db = new ViewerDatabase(settings.EffectiveDataDir);
         db.EnsureCreated();
 
         var users = new UserRepository(db);
@@ -33,10 +33,10 @@ public partial class App : Application
         var importer = new JsonlImporter(db);
         _readQueue = new ReadMarkQueue(db);
         var fetchService = new FetchProcessService(settings);
-        var iconCache = new IconCache(settings.DataDir);
+        var iconCache = new IconCache(settings.EffectiveDataDir);
 
         var mainVm = new MainViewModel(db, users, tweets, importer, _readQueue, fetchService, iconCache);
-        var window = new MainWindow { DataContext = mainVm };
+        var window = new MainWindow(settings) { DataContext = mainVm };
         MainWindow = window;
         window.Show();
 

@@ -100,6 +100,9 @@
                     <Separator />
                     <Button Content="インデックス再構築" Command="{Binding RebuildCommand}" Padding="8,2"
                             ToolTip="選択中ユーザーの tweets インデックスを JSONL から作り直します(既読状態は保持)" />
+                    <Separator />
+                    <Button Content="設定" Padding="8,2" Click="Settings_Click"
+                            ToolTip="データフォルダの場所や Python パスを変更します" />
                 </ToolBar>
             </ToolBarTray>
 

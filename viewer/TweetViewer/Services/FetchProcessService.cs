@@ -39,6 +39,9 @@ public sealed class FetchProcessService
         };
         psi.ArgumentList.Add("main.py");
         psi.ArgumentList.Add(username);
+        // 共有データフォルダにも対応するため保存先を常に明示する
+        psi.ArgumentList.Add("--output-dir");
+        psi.ArgumentList.Add(_settings.EffectiveDataDir);
         switch (mode)
         {
             case FetchMode.Update:
