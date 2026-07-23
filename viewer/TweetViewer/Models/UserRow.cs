@@ -5,6 +5,7 @@ public sealed record UserRow
 {
     public required string Username { get; init; }
     public string? DisplayName { get; init; }
+    public string? IconUrl { get; init; }
     public required string AddedAt { get; init; }
     public string? LastImportAt { get; init; }
     public long JsonlOffset { get; init; }

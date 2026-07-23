@@ -9,6 +9,7 @@ Windows 版ビューア(`viewer/TweetViewer`)・Python fetcher・将来の Mac /
 ```
 data/
 ├── viewer.db                 # SQLite (このドキュメントの §4)
+├── icons/                    # ユーザーアイコンキャッシュ (§3.5)
 └── <username>/               # X のスクリーン名 (@ なし)
     ├── tweets.jsonl          # 生ツイートアーカイブ (正データ、§2)
     ├── state.json            # fetcher 私有 (§6)
@@ -55,6 +56,13 @@ data/
 - ダウンロード失敗により実ファイルが存在しない場合がある。ビューアは
   jpg/png/webp/gif/jpeg の拡張子探索とプレースホルダ表示で耐えること。
 
+### 3.5 ユーザーアイコンキャッシュ (`data/icons/`)
+
+- ファイル名: `<sha1(元URL) の小文字hex>.<ext>`(ext は §3 の拡張子規則を元 URL に適用)
+- キーは JSONL 中の `profile_image_url` そのまま(`_normal` 付き)。取得時は
+  `_normal` → `_bigger` に置換した URL を優先し、404 なら元 URL でフォールバック
+- **派生データ**: 消しても再取得できる。全プラットフォームのビューアで共有可
+
 ## 4. viewer.db(SQLite)
 
 ### 4.1 権威規則(最重要)
@@ -69,7 +77,7 @@ data/
 DELETE しても既読状態は残る。孤児行(対応ツイートが無い read_state)は
 無害であり、**削除してはならない**。
 
-### 4.2 DDL(schema_version = 1)
+### 4.2 DDL(schema_version = 2)
 
 ```sql
 CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -77,6 +85,7 @@ CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE users (
   username       TEXT PRIMARY KEY COLLATE NOCASE,  -- @ なしスクリーン名
   display_name   TEXT,
+  icon_url       TEXT,                             -- 最新ツイートの profile_image_url
   added_at       TEXT NOT NULL,                    -- ISO 8601 UTC
   last_import_at TEXT,
   jsonl_offset   INTEGER NOT NULL DEFAULT 0        -- 取込済みバイトオフセット
@@ -93,7 +102,9 @@ CREATE TABLE tweets (
   lang                 TEXT,
   in_reply_to_username TEXT,
   rt_username          TEXT, rt_display_name TEXT, rt_text TEXT,
+  rt_icon_url          TEXT,                -- RT元作者の profile_image_url
   quoted_username      TEXT, quoted_display_name TEXT, quoted_text TEXT,
+  quoted_icon_url      TEXT,                -- 引用先ユーザーの profile_image_url
   like_count           INTEGER NOT NULL DEFAULT 0,
   retweet_count        INTEGER NOT NULL DEFAULT 0,
   reply_count          INTEGER NOT NULL DEFAULT 0,
@@ -125,6 +136,11 @@ CREATE INDEX ix_read_state_user ON read_state(username);
 - 未読 = `tweets LEFT JOIN read_state` で `read_state.tweet_id IS NULL`。
 - スキーマ変更時は `schema_version` を上げる。読み手は自分より新しい
   バージョンの DB を開いてはならない(エラー表示)。
+- **マイグレーション規則**: 古いバージョンの DB を開いた実装は、列追加
+  (`ALTER TABLE ... ADD COLUMN`)後に派生データ(`tweets`/`tweet_media`)を
+  リセットし `jsonl_offset = 0` にして再取込させてよい。正データ
+  (`users` の既存行・`read_state`)は必ず保全すること。
+  v1 → v2 の差分: `users.icon_url` / `tweets.rt_icon_url` / `tweets.quoted_icon_url` の追加。
 
 ## 5. 取込(JSONL → SQLite)の契約
 

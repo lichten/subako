@@ -33,15 +33,19 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RebuildCommand))]
     private bool _isFetching;
 
+    private readonly IconCache _iconCache;
+
     public MainViewModel(
         ViewerDatabase db, UserRepository users, TweetRepository tweets,
-        JsonlImporter importer, ReadMarkQueue readQueue, FetchProcessService fetchService)
+        JsonlImporter importer, ReadMarkQueue readQueue, FetchProcessService fetchService,
+        IconCache iconCache)
     {
         _db = db;
         _users = users;
         _importer = importer;
+        _iconCache = iconCache;
         FetchService = fetchService;
-        TweetList = new TweetListViewModel(db, tweets, readQueue);
+        TweetList = new TweetListViewModel(db, tweets, readQueue, iconCache);
         TweetList.UnreadDelta += OnUnreadDelta;
     }
 
@@ -79,6 +83,21 @@ public sealed partial class MainViewModel : ObservableObject
             else
                 Users.Add(new UserItemViewModel(row));
         }
+        foreach (var user in Users)
+            ResolveUserIcon(user);
+    }
+
+    private async void ResolveUserIcon(UserItemViewModel user)
+    {
+        try
+        {
+            if (user.IconUrl is { Length: > 0 } url)
+                user.IconPath = await _iconCache.GetLocalPathAsync(url) ?? user.IconPath;
+        }
+        catch (Exception)
+        {
+            // アイコンなし (プレースホルダのまま)
+        }
     }
 
     partial void OnSelectedUserChanged(UserItemViewModel? value) => _ = ResetListAsync();
@@ -86,7 +105,9 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnUnreadOnlyChanged(bool value) => _ = ResetListAsync();
 
     private Task ResetListAsync() =>
-        TweetList.ResetAsync(SelectedUser?.Username, SelectedUser?.DisplayName ?? "", UnreadOnly);
+        TweetList.ResetAsync(
+            SelectedUser?.Username, SelectedUser?.DisplayName ?? "",
+            SelectedUser?.IconUrl, UnreadOnly);
 
     private void OnUnreadDelta(string username, long delta)
     {

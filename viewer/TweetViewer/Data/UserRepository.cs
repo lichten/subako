@@ -16,7 +16,7 @@ public sealed class UserRepository
             using var conn = _db.OpenConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT u.username, u.display_name, u.added_at, u.last_import_at, u.jsonl_offset,
+                SELECT u.username, u.display_name, u.icon_url, u.added_at, u.last_import_at, u.jsonl_offset,
                        (SELECT COUNT(*) FROM tweets t WHERE t.username = u.username) AS tweet_count,
                        (SELECT COUNT(*) FROM tweets t
                         LEFT JOIN read_state r ON r.tweet_id = t.tweet_id
@@ -32,11 +32,12 @@ public sealed class UserRepository
                 {
                     Username = reader.GetString(0),
                     DisplayName = reader.IsDBNull(1) ? null : reader.GetString(1),
-                    AddedAt = reader.GetString(2),
-                    LastImportAt = reader.IsDBNull(3) ? null : reader.GetString(3),
-                    JsonlOffset = reader.GetInt64(4),
-                    TweetCount = reader.GetInt64(5),
-                    UnreadCount = reader.GetInt64(6),
+                    IconUrl = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    AddedAt = reader.GetString(3),
+                    LastImportAt = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    JsonlOffset = reader.GetInt64(5),
+                    TweetCount = reader.GetInt64(6),
+                    UnreadCount = reader.GetInt64(7),
                 });
             }
             return rows;

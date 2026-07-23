@@ -5,7 +5,7 @@ using TweetViewer.Models;
 
 namespace TweetViewer.Data;
 
-public sealed record ParsedTweet(TweetRow Row, IReadOnlyList<TweetMediaRow> Media);
+public sealed record ParsedTweet(TweetRow Row, IReadOnlyList<TweetMediaRow> Media, string? AuthorIconUrl);
 
 /// <summary>
 /// tweets.jsonl の1行を TweetRow + tweet_media 行に変換する純関数。
@@ -86,9 +86,11 @@ public static partial class TweetJsonParser
                 RtUsername = rt is null ? null : GetString(GetObject(rt.Value, "user"), "username"),
                 RtDisplayName = rt is null ? null : GetString(GetObject(rt.Value, "user"), "display_name"),
                 RtText = rt is null ? null : GetString(rt.Value, "full_text") ?? GetString(rt.Value, "text"),
+                RtIconUrl = rt is null ? null : GetString(GetObject(rt.Value, "user"), "profile_image_url"),
                 QuotedUsername = quoted is null ? null : GetString(GetObject(quoted.Value, "user"), "username"),
                 QuotedDisplayName = quoted is null ? null : GetString(GetObject(quoted.Value, "user"), "display_name"),
                 QuotedText = quoted is null ? null : GetString(quoted.Value, "full_text") ?? GetString(quoted.Value, "text"),
+                QuotedIconUrl = quoted is null ? null : GetString(GetObject(quoted.Value, "user"), "profile_image_url"),
                 LikeCount = GetLong(root, "likes_count"),
                 RetweetCount = GetLong(root, "retweet_count"),
                 ReplyCount = GetLong(root, "reply_count"),
@@ -97,7 +99,8 @@ public static partial class TweetJsonParser
                 RawOffset = rawOffset,
                 RawLength = rawLength,
             };
-            return new ParsedTweet(row, media);
+            var authorIcon = GetString(GetObject(root, "user"), "profile_image_url");
+            return new ParsedTweet(row, media, authorIcon);
         }
     }
 

@@ -37,13 +37,17 @@ public class TweetJsonParserTests
     {
         var parsed = ParseOk("""
             {"id":"1","created_at":"Tue Jul 21 20:23:54 +0000 2026","full_text":"RT @a: 略",
+             "user":{"username":"owner","profile_image_url":"https://pbs.twimg.com/profile_images/1/o_normal.jpg"},
              "retweeted_status":{"id":"2","full_text":"元の全文",
-               "user":{"username":"alice","display_name":"Alice"}}}
+               "user":{"username":"alice","display_name":"Alice",
+                 "profile_image_url":"https://pbs.twimg.com/profile_images/2/a_normal.jpg"}}}
             """.ReplaceLineEndings(""));
         Assert.Equal(TweetType.Retweet, parsed.Row.Type);
         Assert.Equal("alice", parsed.Row.RtUsername);
         Assert.Equal("Alice", parsed.Row.RtDisplayName);
         Assert.Equal("元の全文", parsed.Row.RtText);
+        Assert.Equal("https://pbs.twimg.com/profile_images/2/a_normal.jpg", parsed.Row.RtIconUrl);
+        Assert.Equal("https://pbs.twimg.com/profile_images/1/o_normal.jpg", parsed.AuthorIconUrl);
     }
 
     [Fact]
@@ -62,11 +66,14 @@ public class TweetJsonParserTests
         var parsed = ParseOk("""
             {"id":"1","full_text":"comment","is_quote_status":true,
              "quoted_status":{"id":"2","full_text":"quoted text",
-               "user":{"username":"carol","display_name":"Carol"}}}
+               "user":{"username":"carol","display_name":"Carol",
+                 "profile_image_url":"https://pbs.twimg.com/profile_images/3/c_normal.png"}}}
             """.ReplaceLineEndings(""));
         Assert.Equal(TweetType.Quote, parsed.Row.Type);
         Assert.Equal("carol", parsed.Row.QuotedUsername);
         Assert.Equal("quoted text", parsed.Row.QuotedText);
+        Assert.Equal("https://pbs.twimg.com/profile_images/3/c_normal.png", parsed.Row.QuotedIconUrl);
+        Assert.Null(parsed.AuthorIconUrl);
     }
 
     [Fact]

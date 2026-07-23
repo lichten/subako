@@ -10,7 +10,7 @@ namespace TweetViewer.Data;
 /// </summary>
 public sealed class ViewerDatabase
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
 
     public string DataDir { get; }
     public string DbPath { get; }
@@ -62,6 +62,7 @@ public sealed class ViewerDatabase
             CREATE TABLE IF NOT EXISTS users (
               username       TEXT PRIMARY KEY COLLATE NOCASE,
               display_name   TEXT,
+              icon_url       TEXT,
               added_at       TEXT NOT NULL,
               last_import_at TEXT,
               jsonl_offset   INTEGER NOT NULL DEFAULT 0
@@ -80,9 +81,11 @@ public sealed class ViewerDatabase
               rt_username          TEXT,
               rt_display_name      TEXT,
               rt_text              TEXT,
+              rt_icon_url          TEXT,
               quoted_username      TEXT,
               quoted_display_name  TEXT,
               quoted_text          TEXT,
+              quoted_icon_url      TEXT,
               like_count           INTEGER NOT NULL DEFAULT 0,
               retweet_count        INTEGER NOT NULL DEFAULT 0,
               reply_count          INTEGER NOT NULL DEFAULT 0,
@@ -111,7 +114,7 @@ public sealed class ViewerDatabase
 
             CREATE INDEX IF NOT EXISTS ix_read_state_user ON read_state(username);
 
-            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '1');
+            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '2');
             """;
         cmd.ExecuteNonQuery();
 
@@ -123,6 +126,30 @@ public sealed class ViewerDatabase
             throw new InvalidOperationException(
                 $"viewer.db のスキーマバージョン {stored} はこのアプリ (v{SchemaVersion}) より新しいため開けません。");
         }
+        if (stored < 2)
+            MigrateV1ToV2(conn);
+    }
+
+    /// <summary>
+    /// v1 → v2: アイコン URL 列を追加し、派生データ (tweets/tweet_media) を
+    /// リセットして次回取込で新列を埋める。users / read_state は保全。
+    /// </summary>
+    private static void MigrateV1ToV2(SqliteConnection conn)
+    {
+        using var tx = conn.BeginTransaction();
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            ALTER TABLE users  ADD COLUMN icon_url TEXT;
+            ALTER TABLE tweets ADD COLUMN rt_icon_url TEXT;
+            ALTER TABLE tweets ADD COLUMN quoted_icon_url TEXT;
+            DELETE FROM tweet_media;
+            DELETE FROM tweets;
+            UPDATE users SET jsonl_offset = 0;
+            UPDATE schema_meta SET value = '2' WHERE key = 'schema_version';
+            """;
+        cmd.ExecuteNonQuery();
+        tx.Commit();
     }
 
     public string UserDir(string username) => Path.Combine(DataDir, username);

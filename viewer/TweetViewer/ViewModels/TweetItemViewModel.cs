@@ -4,6 +4,7 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TweetViewer.Models;
+using TweetViewer.Services;
 
 namespace TweetViewer.ViewModels;
 
@@ -18,17 +19,44 @@ public sealed partial class TweetItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isRead;
 
+    /// <summary>メインアイコン (RT は RT元作者、それ以外はアーカイブユーザー)。</summary>
+    [ObservableProperty]
+    private string? _mainIconPath;
+
+    /// <summary>引用ブロックの引用先ユーザーアイコン。</summary>
+    [ObservableProperty]
+    private string? _quotedIconPath;
+
     public IReadOnlyList<string> ImagePaths { get; }
 
     public TweetItemViewModel(
         TweetListViewModel owner, TweetRow row, IReadOnlyList<TweetMediaRow> media,
-        string imagesDir, string ownerDisplayName)
+        string imagesDir, string ownerDisplayName, string? ownerIconUrl, IconCache iconCache)
     {
         _owner = owner;
         Row = row;
         _isRead = row.IsRead;
         OwnerDisplayName = ownerDisplayName;
         ImagePaths = ResolveImagePaths(media, imagesDir);
+
+        var mainUrl = (IsRetweet ? Row.RtIconUrl : null) ?? ownerIconUrl;
+        ResolveIcon(iconCache, mainUrl, path => MainIconPath = path);
+        if (IsQuote)
+            ResolveIcon(iconCache, Row.QuotedIconUrl, path => QuotedIconPath = path);
+    }
+
+    private static async void ResolveIcon(IconCache cache, string? url, Action<string?> setter)
+    {
+        try
+        {
+            var path = await cache.GetLocalPathAsync(url);
+            if (path is not null)
+                setter(path);
+        }
+        catch (Exception)
+        {
+            // アイコンなし (プレースホルダのまま)
+        }
     }
 
     public string OwnerDisplayName { get; }

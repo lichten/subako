@@ -14,9 +14,11 @@ public sealed partial class TweetListViewModel : ObservableObject
     private readonly ViewerDatabase _db;
     private readonly TweetRepository _repo;
     private readonly ReadMarkQueue _readQueue;
+    private readonly IconCache _iconCache;
 
     private string? _username;
     private string _displayName = "";
+    private string? _ownerIconUrl;
     private bool _unreadOnly;
     private (long SortKey, long IdInt)? _cursor;
     private bool _loading;
@@ -30,19 +32,22 @@ public sealed partial class TweetListViewModel : ObservableObject
     /// <summary>スクロール既読で未読数が1減るたびに発火(引数 = username)。</summary>
     public event Action<string, long>? UnreadDelta;
 
-    public TweetListViewModel(ViewerDatabase db, TweetRepository repo, ReadMarkQueue readQueue)
+    public TweetListViewModel(
+        ViewerDatabase db, TweetRepository repo, ReadMarkQueue readQueue, IconCache iconCache)
     {
         _db = db;
         _repo = repo;
         _readQueue = readQueue;
+        _iconCache = iconCache;
     }
 
-    public async Task ResetAsync(string? username, string displayName, bool unreadOnly)
+    public async Task ResetAsync(string? username, string displayName, string? ownerIconUrl, bool unreadOnly)
     {
         var version = ++_resetVersion;
         await _readQueue.FlushAsync();
         _username = username;
         _displayName = displayName;
+        _ownerIconUrl = ownerIconUrl;
         _unreadOnly = unreadOnly;
         _cursor = null;
         Items.Clear();
@@ -67,11 +72,12 @@ public sealed partial class TweetListViewModel : ObservableObject
 
             var imagesDir = _db.ImagesDir(username);
             var displayName = _displayName;
+            var ownerIconUrl = _ownerIconUrl;
             var vms = await Task.Run(() => page.Rows
                 .Select(row => new TweetItemViewModel(
                     this, row,
                     page.Media.TryGetValue(row.TweetId, out var m) ? m : Array.Empty<TweetMediaRow>(),
-                    imagesDir, displayName))
+                    imagesDir, displayName, ownerIconUrl, _iconCache))
                 .ToList());
             if (version != _resetVersion)
                 return;

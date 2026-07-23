@@ -23,9 +23,11 @@ public sealed record TweetRow
     public string? RtUsername { get; init; }
     public string? RtDisplayName { get; init; }
     public string? RtText { get; init; }
+    public string? RtIconUrl { get; init; }
     public string? QuotedUsername { get; init; }
     public string? QuotedDisplayName { get; init; }
     public string? QuotedText { get; init; }
+    public string? QuotedIconUrl { get; init; }
     public long LikeCount { get; init; }
     public long RetweetCount { get; init; }
     public long ReplyCount { get; init; }

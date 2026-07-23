@@ -89,7 +89,7 @@ public sealed class JsonlImporter
 
         var imported = 0;
         var skipped = 0;
-        string? latestDisplayName = null;
+        (string? DisplayName, string? IconUrl) latestProfile = (null, null);
 
         while (!ct.IsCancellationRequested)
         {
@@ -126,28 +126,32 @@ public sealed class JsonlImporter
 
         ct.ThrowIfCancellationRequested();
 
-        // display_name は最新ツイートの user.display_name で更新(取込があった場合のみ)
+        // 表示名・アイコンは最新ツイートの user オブジェクトで更新(取込があった場合のみ)
         if (imported > 0)
-            latestDisplayName = QueryLatestDisplayName(conn, username);
+            latestProfile = QueryLatestProfile(conn, username);
 
         using (var tx = conn.BeginTransaction())
         {
             Execute(conn, tx,
                 "UPDATE users SET last_import_at = $t WHERE username = $u",
                 ("$t", UtcNow()), ("$u", username));
-            if (latestDisplayName is not null)
+            if (latestProfile.DisplayName is not null)
                 Execute(conn, tx,
                     "UPDATE users SET display_name = $d WHERE username = $u",
-                    ("$d", latestDisplayName), ("$u", username));
+                    ("$d", latestProfile.DisplayName), ("$u", username));
+            if (latestProfile.IconUrl is not null)
+                Execute(conn, tx,
+                    "UPDATE users SET icon_url = $i WHERE username = $u",
+                    ("$i", latestProfile.IconUrl), ("$u", username));
             tx.Commit();
         }
 
         return new ImportResult(imported, skipped, offset);
     }
 
-    private string? QueryLatestDisplayName(SqliteConnection conn, string username)
+    private (string? DisplayName, string? IconUrl) QueryLatestProfile(SqliteConnection conn, string username)
     {
-        // 生 JSONL から最新ツイートの表示名をシーク読みする
+        // 生 JSONL から最新ツイートの user オブジェクトをシーク読みする
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT raw_offset, raw_length FROM tweets
@@ -156,7 +160,7 @@ public sealed class JsonlImporter
         cmd.Parameters.AddWithValue("$u", username);
         using var reader = cmd.ExecuteReader();
         if (!reader.Read())
-            return null;
+            return (null, null);
         var rawOffset = reader.GetInt64(0);
         var rawLength = reader.GetInt64(1);
         try
@@ -168,17 +172,21 @@ public sealed class JsonlImporter
             stream.ReadExactly(buf);
             var line = Encoding.UTF8.GetString(buf);
             using var doc = System.Text.Json.JsonDocument.Parse(line);
-            return doc.RootElement.TryGetProperty("user", out var user) &&
-                   user.ValueKind == System.Text.Json.JsonValueKind.Object &&
-                   user.TryGetProperty("display_name", out var dn) &&
-                   dn.ValueKind == System.Text.Json.JsonValueKind.String
-                ? dn.GetString()
-                : null;
+            if (!doc.RootElement.TryGetProperty("user", out var user) ||
+                user.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return (null, null);
+            return (GetUserString(user, "display_name"), GetUserString(user, "profile_image_url"));
         }
         catch (Exception)
         {
-            return null;
+            return (null, null);
         }
+
+        static string? GetUserString(System.Text.Json.JsonElement user, string key) =>
+            user.TryGetProperty(key, out var v) &&
+            v.ValueKind == System.Text.Json.JsonValueKind.String
+                ? v.GetString()
+                : null;
     }
 
     private void ResetDerivedOn(SqliteConnection conn, string username)
@@ -209,15 +217,15 @@ public sealed class JsonlImporter
             INSERT OR IGNORE INTO tweets (
               tweet_id, id_int, username, created_at_utc, sort_key, tweet_type,
               full_text, lang, in_reply_to_username,
-              rt_username, rt_display_name, rt_text,
-              quoted_username, quoted_display_name, quoted_text,
+              rt_username, rt_display_name, rt_text, rt_icon_url,
+              quoted_username, quoted_display_name, quoted_text, quoted_icon_url,
               like_count, retweet_count, reply_count, view_count,
               media_count, raw_offset, raw_length
             ) VALUES (
               $id, $idi, $u, $cat, $sk, $ty,
               $tx, $lg, $irtu,
-              $rtu, $rtd, $rtt,
-              $qu, $qd, $qt,
+              $rtu, $rtd, $rtt, $rti,
+              $qu, $qd, $qt, $qi,
               $lc, $rc, $pc, $vc,
               $mc, $ro, $rl
             )
@@ -235,9 +243,11 @@ public sealed class JsonlImporter
         p.AddWithValue("$rtu", (object?)r.RtUsername ?? DBNull.Value);
         p.AddWithValue("$rtd", (object?)r.RtDisplayName ?? DBNull.Value);
         p.AddWithValue("$rtt", (object?)r.RtText ?? DBNull.Value);
+        p.AddWithValue("$rti", (object?)r.RtIconUrl ?? DBNull.Value);
         p.AddWithValue("$qu", (object?)r.QuotedUsername ?? DBNull.Value);
         p.AddWithValue("$qd", (object?)r.QuotedDisplayName ?? DBNull.Value);
         p.AddWithValue("$qt", (object?)r.QuotedText ?? DBNull.Value);
+        p.AddWithValue("$qi", (object?)r.QuotedIconUrl ?? DBNull.Value);
         p.AddWithValue("$lc", r.LikeCount);
         p.AddWithValue("$rc", r.RetweetCount);
         p.AddWithValue("$pc", r.ReplyCount);

@@ -33,8 +33,9 @@ public partial class App : Application
         var importer = new JsonlImporter(db);
         _readQueue = new ReadMarkQueue(db);
         var fetchService = new FetchProcessService(settings);
+        var iconCache = new IconCache(settings.DataDir);
 
-        var mainVm = new MainViewModel(db, users, tweets, importer, _readQueue, fetchService);
+        var mainVm = new MainViewModel(db, users, tweets, importer, _readQueue, fetchService, iconCache);
         var window = new MainWindow { DataContext = mainVm };
         MainWindow = window;
         window.Show();

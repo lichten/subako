@@ -9,3 +9,4 @@ venv/
 # .NET (viewer)
 viewer/**/bin/
 viewer/**/obj/
+.vs/

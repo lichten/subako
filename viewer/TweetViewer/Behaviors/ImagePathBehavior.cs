@@ -13,7 +13,7 @@ namespace TweetViewer.Behaviors;
 /// </summary>
 public static class ImagePathBehavior
 {
-    private const int DecodeWidth = 400;
+    private const int DefaultDecodeWidth = 400;
 
     public static readonly DependencyProperty PathProperty =
         DependencyProperty.RegisterAttached(
@@ -22,6 +22,15 @@ public static class ImagePathBehavior
 
     public static string? GetPath(DependencyObject obj) => (string?)obj.GetValue(PathProperty);
     public static void SetPath(DependencyObject obj, string? value) => obj.SetValue(PathProperty, value);
+
+    /// <summary>デコード幅 (既定 400)。アイコンなど小さい画像には小さい値を指定する。</summary>
+    public static readonly DependencyProperty DecodeWidthProperty =
+        DependencyProperty.RegisterAttached(
+            "DecodeWidth", typeof(int), typeof(ImagePathBehavior),
+            new PropertyMetadata(DefaultDecodeWidth));
+
+    public static int GetDecodeWidth(DependencyObject obj) => (int)obj.GetValue(DecodeWidthProperty);
+    public static void SetDecodeWidth(DependencyObject obj, int value) => obj.SetValue(DecodeWidthProperty, value);
 
     private static async void OnPathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -33,13 +42,14 @@ public static class ImagePathBehavior
         if (string.IsNullOrEmpty(path))
             return;
 
-        var bitmap = await Task.Run(() => Decode(path));
+        var decodeWidth = GetDecodeWidth(image);
+        var bitmap = await Task.Run(() => Decode(path, decodeWidth));
         // デコード中にリサイクルで別パスに変わっていたら捨てる
         if (GetPath(image) == path)
             image.Source = bitmap;
     }
 
-    private static BitmapImage? Decode(string path)
+    private static BitmapImage? Decode(string path, int decodeWidth)
     {
         try
         {
@@ -48,7 +58,7 @@ public static class ImagePathBehavior
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.UriSource = new Uri(path);
-            bitmap.DecodePixelWidth = DecodeWidth;
+            bitmap.DecodePixelWidth = decodeWidth;
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
             bitmap.EndInit();
             bitmap.Freeze();
