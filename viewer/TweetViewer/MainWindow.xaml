@@ -170,9 +170,9 @@
                                                      Margin="0,2,0,0"
                                                      Visibility="{Binding IsReply, Converter={StaticResource BoolToVis}}" />
 
-                                    <!-- 本文 -->
-                                    <emoji:TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap"
-                                                     Margin="0,4,0,0" FontSize="14" />
+                                    <!-- 本文 (URL リンク化 + カラー絵文字) -->
+                                    <TextBlock behaviors:LinkifiedTextBehavior.Text="{Binding DisplayText}"
+                                               TextWrapping="Wrap" Margin="0,4,0,0" FontSize="14" />
 
                                     <!-- 引用 -->
                                     <Border BorderBrush="#CFD9DE" BorderThickness="1" CornerRadius="8"
@@ -196,8 +196,8 @@
                                                                  FontWeight="SemiBold" Foreground="#555"
                                                                  VerticalAlignment="Center" />
                                             </StackPanel>
-                                            <emoji:TextBlock Text="{Binding QuotedText}" TextWrapping="Wrap"
-                                                             FontSize="13" Margin="0,2,0,0" />
+                                            <TextBlock behaviors:LinkifiedTextBehavior.Text="{Binding QuotedText}"
+                                                       TextWrapping="Wrap" FontSize="13" Margin="0,2,0,0" />
                                         </StackPanel>
                                     </Border>
 
