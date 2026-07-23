@@ -1,0 +1,22 @@
+<Window x:Class="TweetViewer.Views.AddUserDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ユーザーを追加" Height="150" Width="360"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        WindowStyle="ToolWindow">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="X のユーザー名 (@ なし):" />
+        <TextBox x:Name="UsernameBox" Grid.Row="1" Margin="0,6,0,0" FontSize="14"
+                 KeyDown="UsernameBox_KeyDown" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom">
+            <Button Content="追加" Width="80" IsDefault="True" Click="Ok_Click" />
+            <Button Content="キャンセル" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

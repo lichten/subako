@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 _WINDOW_SUSPECT_COUNT = 400
 _MIN_WINDOW_DAYS = 2
 
+# cursor 付きの空ページがこの回数連続したら異常とみなして打ち切る
+_MAX_CONSECUTIVE_EMPTY_PAGES = 3
+
 _DATE_FORMATS = (
     "%a %b %d %H:%M:%S %z %Y",   # 旧Twitter形式: Wed Oct 10 20:19:24 +0000 2018
     "%Y-%m-%dT%H:%M:%S%z",
@@ -65,6 +68,7 @@ class TweetFetcher:
             logger.info("タイムライン取得は完了済みです(state.json)。スキップします")
             return
         page = 0
+        empty_streak = 0
         while True:
             if self.max_pages is not None and page >= self.max_pages:
                 logger.info("--max-pages 上限 (%d) に達したので中断します", self.max_pages)
@@ -80,11 +84,71 @@ class TweetFetcher:
             )
             state["timeline_cursor"] = cursor
             self.storage.save_state(state)
-            if not cursor or not tweets:
+            # 終端契約は「next_cursor がなくなるまでループ」。cursor 付きの
+            # 空ページは終端扱いせず継続するが、連続したら異常として打ち切る。
+            if not cursor:
                 state["timeline_done"] = True
                 self.storage.save_state(state)
-                logger.info("タイムラインの終端に到達しました")
+                logger.info("タイムラインの終端に到達しました (next_cursor なし)")
                 break
+            if not tweets:
+                empty_streak += 1
+                logger.info(
+                    "[timeline] page=%d は 0件だが next_cursor あり (連続 %d/%d)。継続します",
+                    page, empty_streak, _MAX_CONSECUTIVE_EMPTY_PAGES,
+                )
+                if empty_streak >= _MAX_CONSECUTIVE_EMPTY_PAGES:
+                    state["timeline_done"] = True
+                    self.storage.save_state(state)
+                    logger.warning(
+                        "cursor 付き空ページが %d 回連続したため終端とみなします",
+                        _MAX_CONSECUTIVE_EMPTY_PAGES,
+                    )
+                    break
+            else:
+                empty_streak = 0
+
+    # ---- 差分取得: 既知ツイートに到達するまで先頭からページング ----
+
+    def fetch_timeline_update(self):
+        """先頭ページから遡り、非空ページが全件既知になったら停止する差分取得。
+
+        state.json の timeline_cursor / timeline_done は参照も更新もしない
+        (全件取得モードの再開状態を壊さないため)。部分的に既知のページは
+        続行し、欠落の補完は --fresh / --backfill に委ねる。
+        """
+        cursor = None
+        page = 0
+        empty_streak = 0
+        while True:
+            if self.max_pages is not None and page >= self.max_pages:
+                logger.info("--max-pages 上限 (%d) に達したので中断します", self.max_pages)
+                break
+            resp = self.client.user_tweets(self.username, cursor=cursor)
+            tweets = resp.get("tweets") or []
+            page += 1
+            new_tweets = self._handle_page(tweets)
+            cursor = resp.get("next_cursor")
+            logger.info(
+                "[update] page=%d 取得=%d 新規=%d 累計新規=%d",
+                page, len(tweets), len(new_tweets), self.total_new,
+            )
+            if tweets and not new_tweets:
+                logger.info("既知ツイートのみのページに到達したため差分取得を終了します")
+                break
+            if not cursor:
+                logger.info("終端に到達しました (next_cursor なし)")
+                break
+            if not tweets:
+                empty_streak += 1
+                if empty_streak >= _MAX_CONSECUTIVE_EMPTY_PAGES:
+                    logger.warning(
+                        "cursor 付き空ページが %d 回連続したため終了します",
+                        _MAX_CONSECUTIVE_EMPTY_PAGES,
+                    )
+                    break
+            else:
+                empty_streak = 0
 
     # ---- 完全性チェック ----
 

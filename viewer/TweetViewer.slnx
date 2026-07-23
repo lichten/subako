@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="TweetViewer.Tests/TweetViewer.Tests.csproj" />
+  <Project Path="TweetViewer/TweetViewer.csproj" />
+</Solution>

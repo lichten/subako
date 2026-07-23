@@ -1,7 +1,11 @@
 .env
-data/
+/data/
 probe_output/
 __pycache__/
 *.pyc
 .venv/
 venv/
+
+# .NET (viewer)
+viewer/**/bin/
+viewer/**/obj/

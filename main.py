@@ -31,6 +31,8 @@ def main():
                         help="タイムライン取得後に search-tweets の期間分割検索で補完する")
     parser.add_argument("--fresh", action="store_true",
                         help="state.json を無視して最初からページングし直す (既存ツイートの重複保存はしない)")
+    parser.add_argument("--update", action="store_true",
+                        help="先頭からページングし、ページ全体が既知ツイートになったら停止する差分取得")
     parser.add_argument("--rps", type=float, default=5.0,
                         help="1秒あたりのリクエスト数上限 (既定: 5、Sorsa の上限は 20)")
     args = parser.parse_args()
@@ -59,11 +61,16 @@ def main():
                            downloader=downloader, max_pages=args.max_pages)
 
     try:
-        fetcher.fetch_timeline()
-        report = fetcher.report_completeness()
-        if args.backfill:
-            created_at = report.get("account_created_at") if report else None
-            fetcher.backfill(account_created_at=created_at)
+        if args.update:
+            if args.fresh or args.backfill:
+                logger.warning("--update 指定時は --fresh / --backfill を無視します")
+            fetcher.fetch_timeline_update()
+        else:
+            fetcher.fetch_timeline()
+            report = fetcher.report_completeness()
+            if args.backfill:
+                created_at = report.get("account_created_at") if report else None
+                fetcher.backfill(account_created_at=created_at)
     except SorsaApiError as exc:
         logger.error("API エラーで中断しました: %s", exc)
         logger.error("再実行すれば途中から再開できます")

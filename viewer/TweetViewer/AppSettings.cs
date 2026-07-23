@@ -1,0 +1,62 @@
+using System.IO;
+using System.Text.Json;
+
+namespace TweetViewer;
+
+/// <summary>
+/// %APPDATA%\TweetViewer\settings.json。RepoDir 未設定時は exe 位置から
+/// main.py を持つ祖先ディレクトリを探索する(開発中は viewer/TweetViewer/bin/... 配下で動くため)。
+/// </summary>
+public sealed class AppSettings
+{
+    public string RepoDir { get; set; } = "";
+    public string PythonPath { get; set; } = "python";
+
+    private static string SettingsPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "TweetViewer", "settings.json");
+
+    public string DataDir => Path.Combine(RepoDir, "data");
+
+    public static AppSettings Load()
+    {
+        AppSettings settings = new();
+        try
+        {
+            if (File.Exists(SettingsPath))
+                settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath)) ?? settings;
+        }
+        catch (Exception)
+        {
+            // 壊れた設定は既定値で continue
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.RepoDir) || !File.Exists(Path.Combine(settings.RepoDir, "main.py")))
+        {
+            var detected = DetectRepoDir();
+            if (detected is not null)
+                settings.RepoDir = detected;
+        }
+        return settings;
+    }
+
+    public void Save()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(
+            this, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static string? DetectRepoDir()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "main.py")) &&
+                Directory.Exists(Path.Combine(dir.FullName, "sorsa_fetcher")))
+                return dir.FullName;
+            dir = dir.Parent;
+        }
+        return null;
+    }
+}
