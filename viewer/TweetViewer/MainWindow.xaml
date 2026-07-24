@@ -194,24 +194,26 @@
                                     </Image>
                                 </Grid>
                                 <StackPanel Grid.Column="2" Margin="10,8,12,8">
-                                    <!-- ヘッダ行 -->
+                                    <!-- RT ヘッダ (○○さんがリツイート) -->
+                                    <emoji:TextBlock Text="{Binding RtHeader}" Foreground="#00BA7C" FontSize="12"
+                                                     Margin="0,0,0,2"
+                                                     Visibility="{Binding IsRetweet, Converter={StaticResource BoolToVis}}" />
+
+                                    <!-- ヘッダ行 (RT は RT元作者) -->
                                     <DockPanel>
                                         <TextBlock DockPanel.Dock="Right" Text="{Binding CreatedAtLocal}"
                                                    Foreground="#666" FontSize="12" VerticalAlignment="Center" />
                                         <StackPanel Orientation="Horizontal">
-                                            <emoji:TextBlock Text="{Binding OwnerDisplayName}" FontSize="13"
+                                            <emoji:TextBlock Text="{Binding HeaderDisplayName}" FontSize="13"
                                                              FontWeight="Bold" VerticalAlignment="Center" />
                                             <TextBlock FontSize="13" Foreground="#666" Margin="6,0,0,0"
                                                        VerticalAlignment="Center">
-                                                <Run Text="@" /><Run Text="{Binding Username, Mode=OneWay}" />
+                                                <Run Text="@" /><Run Text="{Binding HeaderUsername, Mode=OneWay}" />
                                             </TextBlock>
                                         </StackPanel>
                                     </DockPanel>
 
-                                    <!-- RT / 返信ヘッダ -->
-                                    <emoji:TextBlock Text="{Binding RtHeader}" Foreground="#00BA7C" FontSize="12"
-                                                     Margin="0,2,0,0"
-                                                     Visibility="{Binding IsRetweet, Converter={StaticResource BoolToVis}}" />
+                                    <!-- 返信ヘッダ -->
                                     <emoji:TextBlock Text="{Binding ReplyHeader}" Foreground="#1D9BF0" FontSize="12"
                                                      Margin="0,2,0,0"
                                                      Visibility="{Binding IsReply, Converter={StaticResource BoolToVis}}" />

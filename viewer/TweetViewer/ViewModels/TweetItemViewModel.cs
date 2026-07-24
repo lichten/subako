@@ -66,9 +66,17 @@ public sealed partial class TweetItemViewModel : ObservableObject
     public bool IsQuote => Row.Type == TweetType.Quote;
     public bool HasImages => ImagePaths.Count > 0;
 
-    public string RtHeader => IsRetweet
-        ? $"RT @{Row.RtUsername}" + (string.IsNullOrEmpty(Row.RtDisplayName) ? "" : $" ({Row.RtDisplayName})")
-        : "";
+    /// <summary>ヘッダ太字の表示名。RT は RT元作者、それ以外はアーカイブユーザー。</summary>
+    public string HeaderDisplayName => IsRetweet
+        ? (string.IsNullOrEmpty(Row.RtDisplayName) ? Row.RtUsername ?? OwnerDisplayName : Row.RtDisplayName!)
+        : OwnerDisplayName;
+
+    /// <summary>ヘッダの @ユーザー名。RT は RT元作者。</summary>
+    public string HeaderUsername => IsRetweet && !string.IsNullOrEmpty(Row.RtUsername)
+        ? Row.RtUsername!
+        : Row.Username;
+
+    public string RtHeader => IsRetweet ? $"{OwnerDisplayName} さんがリツイート" : "";
     public string RtText => Row.RtText ?? "";
     public string ReplyHeader => IsReply ? $"@{Row.InReplyToUsername} への返信" : "";
     public string QuotedHeader => IsQuote
