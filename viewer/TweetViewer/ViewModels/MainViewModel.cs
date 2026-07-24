@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TweetViewer.Data;
@@ -10,6 +12,7 @@ public sealed partial class MainViewModel : ObservableObject
 {
     private readonly ViewerDatabase _db;
     private readonly UserRepository _users;
+    private readonly TagRepository _tags;
     private readonly JsonlImporter _importer;
 
     public TweetListViewModel TweetList { get; }
@@ -22,6 +25,16 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _isMediaView;
 
     public ObservableCollection<UserItemViewModel> Users { get; } = new();
+
+    /// <summary>サイドバー表示用のタグフィルタ済みビュー。</summary>
+    public ICollectionView UsersView { get; }
+
+    /// <summary>全タグ (フィルタ ComboBox / ContextMenu 用)。</summary>
+    public ObservableCollection<TagItemViewModel> Tags { get; } = new();
+
+    /// <summary>null = 全ユーザー表示。</summary>
+    [ObservableProperty]
+    private TagItemViewModel? _selectedTagFilter;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RebuildCommand))]
@@ -41,18 +54,21 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly IconCache _iconCache;
 
     public MainViewModel(
-        ViewerDatabase db, UserRepository users, TweetRepository tweets,
+        ViewerDatabase db, UserRepository users, TweetRepository tweets, TagRepository tags,
         JsonlImporter importer, ReadMarkQueue readQueue, FetchProcessService fetchService,
         IconCache iconCache)
     {
         _db = db;
         _users = users;
+        _tags = tags;
         _importer = importer;
         _iconCache = iconCache;
         FetchService = fetchService;
         TweetList = new TweetListViewModel(db, tweets, readQueue, iconCache);
         TweetList.UnreadDelta += OnUnreadDelta;
         MediaGrid = new MediaGridViewModel(db, tweets);
+        UsersView = CollectionViewSource.GetDefaultView(Users);
+        UsersView.Filter = FilterUser;
     }
 
     /// <summary>起動時: data/ 直下の既存アーカイブを登録 → 全ユーザー差分取込 → 一覧表示。</summary>
@@ -61,6 +77,7 @@ public sealed partial class MainViewModel : ObservableObject
         StatusText = "既存データを確認しています…";
         await _users.RegisterExistingDataDirsAsync();
         await RefreshUsersAsync();
+        await RefreshTagsAsync();
 
         foreach (var user in Users.ToList())
         {
@@ -104,6 +121,91 @@ public sealed partial class MainViewModel : ObservableObject
         {
             // アイコンなし (プレースホルダのまま)
         }
+    }
+
+    private bool FilterUser(object obj) =>
+        SelectedTagFilter is not { } tag || ((UserItemViewModel)obj).HasTag(tag.TagId);
+
+    partial void OnSelectedTagFilterChanged(TagItemViewModel? value)
+    {
+        UsersView.Refresh();
+        // 選択中ユーザーがフィルタで消えたら表示中の先頭ユーザーを選択 (空ペイン回避)
+        if (SelectedUser is not null && !FilterUser(SelectedUser))
+            SelectedUser = UsersView.Cast<UserItemViewModel>().FirstOrDefault();
+    }
+
+    /// <summary>tags / user_tags を再読込して Tags と各ユーザーの Tags を更新。</summary>
+    public async Task RefreshTagsAsync()
+    {
+        var rows = await _tags.GetAllAsync();
+        var byId = Tags.ToDictionary(t => t.TagId);
+        foreach (var row in rows)
+        {
+            if (byId.Remove(row.TagId, out var existing))
+                existing.Apply(row);
+            else
+                Tags.Add(new TagItemViewModel(row));
+        }
+        // 消えたタグを除去 (SelectedTagFilter の参照同一性を保つため作り直さない)
+        foreach (var removed in byId.Values)
+        {
+            Tags.Remove(removed);
+            if (SelectedTagFilter == removed)
+                SelectedTagFilter = null;
+        }
+
+        var assignments = await _tags.GetAssignmentsAsync();
+        var tagById = Tags.ToDictionary(t => t.TagId);
+        foreach (var user in Users)
+        {
+            var ids = assignments.TryGetValue(user.Username, out var list) ? list : (IReadOnlyList<long>)[];
+            user.ApplyTags(ids.Where(tagById.ContainsKey).Select(id => tagById[id]));
+        }
+        UsersView.Refresh();
+    }
+
+    /// <summary>タグの付け外し (ContextMenu のチェック項目から)。</summary>
+    public async Task ToggleTagAsync(UserItemViewModel user, TagItemViewModel tag, bool assign)
+    {
+        if (assign)
+        {
+            if (user.HasTag(tag.TagId))
+                return;
+            await _tags.AssignAsync(user.Username, tag.TagId);
+            user.Tags.Add(tag);
+            tag.UserCount++;
+        }
+        else
+        {
+            var existing = user.Tags.FirstOrDefault(t => t.TagId == tag.TagId);
+            if (existing is null)
+                return;
+            await _tags.UnassignAsync(user.Username, tag.TagId);
+            user.Tags.Remove(existing);
+            tag.UserCount = Math.Max(0, tag.UserCount - 1);
+        }
+        UsersView.Refresh();
+    }
+
+    /// <summary>新規タグ作成 + そのユーザーへ付与 (AddTagDialog から)。</summary>
+    public async Task CreateAndAssignTagAsync(string name, UserItemViewModel user)
+    {
+        name = name.Trim();
+        if (name.Length == 0)
+        {
+            StatusText = "タグ名を入力してください";
+            return;
+        }
+        var tagId = await _tags.AddAsync(name);
+        await _tags.AssignAsync(user.Username, tagId);
+        await RefreshTagsAsync();
+    }
+
+    /// <summary>タグ削除 (ManageTagsDialog から)。</summary>
+    public async Task DeleteTagAsync(TagItemViewModel tag)
+    {
+        await _tags.DeleteAsync(tag.TagId);
+        await RefreshTagsAsync();
     }
 
     partial void OnSelectedUserChanged(UserItemViewModel? value) => _ = ResetListAsync();

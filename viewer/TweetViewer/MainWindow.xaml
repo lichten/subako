@@ -27,7 +27,15 @@
                         ToolTip="ユーザーを追加" Click="AddUser_Click" />
                 <TextBlock Text="ユーザー" FontWeight="Bold" VerticalAlignment="Center" />
             </DockPanel>
-            <ListBox ItemsSource="{Binding Users}"
+            <!-- タグフィルタ (未選択 = 全ユーザー表示) -->
+            <DockPanel DockPanel.Dock="Top" Margin="8,0,8,4">
+                <Button DockPanel.Dock="Right" Content="×" Width="22" Height="22" Margin="4,0,0,0"
+                        ToolTip="タグフィルタを解除" Click="ClearTagFilter_Click" />
+                <ComboBox ItemsSource="{Binding Tags}"
+                          SelectedItem="{Binding SelectedTagFilter}"
+                          DisplayMemberPath="Name" />
+            </DockPanel>
+            <ListBox ItemsSource="{Binding UsersView}"
                      SelectedItem="{Binding SelectedUser}"
                      BorderThickness="0" Background="Transparent"
                      HorizontalContentAlignment="Stretch"
@@ -39,6 +47,11 @@
                                 <ContextMenu>
                                     <MenuItem Header="更新 (差分取得)" Click="MenuUpdate_Click" />
                                     <MenuItem Header="全期間を取得 (バックフィル)..." Click="MenuBackfill_Click" />
+                                    <Separator />
+                                    <MenuItem Header="タグ" SubmenuOpened="TagMenu_SubmenuOpened">
+                                        <!-- 子が空だと SubmenuOpened が発火しないためのプレースホルダ -->
+                                        <MenuItem Header="(読込中)" />
+                                    </MenuItem>
                                 </ContextMenu>
                             </Grid.ContextMenu>
                             <Grid.ColumnDefinitions>
@@ -65,6 +78,20 @@
                                     <Run Text="@" /><Run Text="{Binding Username, Mode=OneWay}" />
                                     <Run Text=" " /><Run Text="{Binding TweetCount, Mode=OneWay, StringFormat={}{0:N0}件}" />
                                 </TextBlock>
+                                <ItemsControl ItemsSource="{Binding Tags}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:TagItemViewModel}">
+                                            <Border Background="#E1E8ED" CornerRadius="7" Padding="5,1" Margin="0,2,4,0">
+                                                <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#555" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
                             <Border Grid.Column="2" Background="#1D9BF0" CornerRadius="9"
                                     MinWidth="18" Height="18" Margin="4,0" Padding="5,0"

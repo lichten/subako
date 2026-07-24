@@ -53,6 +53,45 @@ public partial class MainWindow : Window
             StartFetch(user.Username, FetchMode.Update, maxRequests: null);
     }
 
+    private void ClearTagFilter_Click(object sender, RoutedEventArgs e) =>
+        Vm.SelectedTagFilter = null;
+
+    /// <summary>「タグ」サブメニューを開くたびに現在のタグ一覧から項目を作り直す。</summary>
+    private void TagMenu_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: UserItemViewModel user } menu)
+            return;
+        menu.Items.Clear();
+        foreach (var tag in Vm.Tags)
+        {
+            var item = new MenuItem
+            {
+                Header = tag.Name,
+                IsCheckable = true,
+                IsChecked = user.HasTag(tag.TagId),
+                StaysOpenOnClick = true,   // 連続で付け外しできるように
+            };
+            var captured = tag;
+            item.Click += async (_, _) => await Vm.ToggleTagAsync(user, captured, item.IsChecked);
+            menu.Items.Add(item);
+        }
+        if (Vm.Tags.Count > 0)
+            menu.Items.Add(new Separator());
+        var add = new MenuItem { Header = "新しいタグ..." };
+        add.Click += (_, _) => AddTag(user);
+        menu.Items.Add(add);
+        var manage = new MenuItem { Header = "タグの整理..." };
+        manage.Click += (_, _) => new ManageTagsDialog(Vm) { Owner = this }.ShowDialog();
+        menu.Items.Add(manage);
+    }
+
+    private async void AddTag(UserItemViewModel user)
+    {
+        var dialog = new AddTagDialog { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.TagName is { Length: > 0 } name)
+            await Vm.CreateAndAssignTagAsync(name, user);
+    }
+
     private void MenuBackfill_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { DataContext: UserItemViewModel user } || Vm.IsFetching)

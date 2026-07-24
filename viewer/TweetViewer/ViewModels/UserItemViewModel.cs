@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using TweetViewer.Models;
 
@@ -6,6 +7,9 @@ namespace TweetViewer.ViewModels;
 public sealed partial class UserItemViewModel : ObservableObject
 {
     public string Username { get; }
+
+    /// <summary>このユーザーに付与されたタグ (チップ表示・フィルタ判定用)。</summary>
+    public ObservableCollection<TagItemViewModel> Tags { get; } = new();
 
     [ObservableProperty]
     private string _displayName;
@@ -42,4 +46,14 @@ public sealed partial class UserItemViewModel : ObservableObject
     public bool HasUnread => UnreadCount > 0;
 
     partial void OnUnreadCountChanged(long value) => OnPropertyChanged(nameof(HasUnread));
+
+    public bool HasTag(long tagId) => Tags.Any(t => t.TagId == tagId);
+
+    /// <summary>タグ割当を差し替える (RefreshTagsAsync から)。</summary>
+    public void ApplyTags(IEnumerable<TagItemViewModel> tags)
+    {
+        Tags.Clear();
+        foreach (var tag in tags)
+            Tags.Add(tag);
+    }
 }

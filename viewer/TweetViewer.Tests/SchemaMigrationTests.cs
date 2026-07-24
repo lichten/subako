@@ -4,7 +4,7 @@ using TweetViewer.Data;
 
 namespace TweetViewer.Tests;
 
-/// <summary>v1 スキーマの viewer.db を開いた際の v2 マイグレーション検証。</summary>
+/// <summary>旧スキーマの viewer.db を開いた際の逐次マイグレーション検証。</summary>
 public sealed class SchemaMigrationTests : IDisposable
 {
     private readonly string _dataDir;
@@ -104,5 +104,53 @@ public sealed class SchemaMigrationTests : IDisposable
         // 正データ (users / read_state) は保全
         Assert.Equal("Alice", (string)Scalar("SELECT display_name FROM users WHERE username='alice'")!);
         Assert.Equal(1L, Scalar("SELECT COUNT(*) FROM read_state"));
+        // v4 で追加されたタグテーブルが存在する (SELECT が例外にならない)
+        Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM tags"));
+        Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM user_tags"));
+    }
+
+    [Fact]
+    public void V3DatabaseMigratesToV4WithoutResettingDerivedData()
+    {
+        // v3 相当の DB を作る: 最新 DDL で作成後、バージョンだけ '3' に戻す
+        {
+            var setup = new ViewerDatabase(_dataDir);
+            setup.EnsureCreated();
+            using var conn = setup.OpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                DROP TABLE tags;
+                DROP TABLE user_tags;
+                UPDATE schema_meta SET value = '3' WHERE key = 'schema_version';
+                INSERT INTO users (username, added_at, jsonl_offset)
+                  VALUES ('alice', '2026-01-01T00:00:00Z', 12345);
+                INSERT INTO tweets (tweet_id, id_int, username, created_at_utc, sort_key,
+                                    tweet_type, full_text, raw_offset, raw_length)
+                  VALUES ('1', 1, 'alice', '2026-01-01T00:00:00Z', 100, 0, 'hello', 0, 10);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        SqliteConnection.ClearAllPools();
+
+        var db = new ViewerDatabase(_dataDir);
+        db.EnsureCreated();
+
+        using var conn2 = db.OpenConnection();
+        object? Scalar(string sql)
+        {
+            using var cmd = conn2.CreateCommand();
+            cmd.CommandText = sql;
+            return cmd.ExecuteScalar();
+        }
+
+        Assert.Equal(
+            ViewerDatabase.SchemaVersion.ToString(),
+            (string)Scalar("SELECT value FROM schema_meta WHERE key='schema_version'")!);
+        // v3→v4 はテーブル追加のみ: 派生データはリセットされず全再取込も走らない
+        Assert.Equal(1L, Scalar("SELECT COUNT(*) FROM tweets"));
+        Assert.Equal(12345L, Scalar("SELECT jsonl_offset FROM users WHERE username='alice'"));
+        // タグテーブルが作られている
+        Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM tags"));
+        Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM user_tags"));
     }
 }

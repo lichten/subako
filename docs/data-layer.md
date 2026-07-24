@@ -71,13 +71,14 @@ data/
 |---|---|---|
 | `tweets`, `tweet_media` | **派生** | tweets.jsonl からいつでも再構築可。手編集禁止 |
 | `users`, `read_state` | **正データ** | 破棄禁止。rebuild しても保持すること |
+| `tags`, `user_tags` | **正データ** | ユーザーへの独自タグ。JSONL から再構築不能。破棄禁止 |
 | `schema_meta` | メタ | `schema_version` を格納 |
 
 `read_state` は `tweets` への FK を持たない。rebuild で `tweets` を
 DELETE しても既読状態は残る。孤児行(対応ツイートが無い read_state)は
 無害であり、**削除してはならない**。
 
-### 4.2 DDL(schema_version = 3)
+### 4.2 DDL(schema_version = 4)
 
 ```sql
 CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -130,6 +131,18 @@ CREATE TABLE read_state (
   read_at  TEXT NOT NULL                   -- ISO 8601 UTC
 ) WITHOUT ROWID;
 CREATE INDEX ix_read_state_user ON read_state(username);
+
+CREATE TABLE tags (
+  tag_id INTEGER PRIMARY KEY,              -- rowid エイリアス
+  name   TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+
+CREATE TABLE user_tags (
+  username TEXT NOT NULL COLLATE NOCASE,   -- = users.username (FK なし、read_state と同流儀)
+  tag_id   INTEGER NOT NULL,
+  PRIMARY KEY (username, tag_id)
+) WITHOUT ROWID;
+CREATE INDEX ix_user_tags_tag ON user_tags(tag_id);
 ```
 
 - `raw_offset` / `raw_length` により、詳細表示は生 JSONL から該当行を
@@ -143,6 +156,9 @@ CREATE INDEX ix_read_state_user ON read_state(username);
   (`users` の既存行・`read_state`)は必ず保全すること。
   v1 → v2 の差分: `users.icon_url` / `tweets.rt_icon_url` / `tweets.quoted_icon_url` の追加。
   v2 → v3 の差分: `tweet_media.origin` の追加(メディア欄 = `origin=0 AND tweet_type != 1` で抽出)。
+  v3 → v4 の差分: `tags` / `user_tags` テーブルの追加のみ。**派生データの
+  リセット・再取込は不要**(テーブル追加だけのバージョンアップでは
+  リセットしないこと)。
 
 ## 5. 取込(JSONL → SQLite)の契約
 

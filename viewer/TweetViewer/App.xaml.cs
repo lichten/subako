@@ -30,12 +30,13 @@ public partial class App : Application
 
         var users = new UserRepository(db);
         var tweets = new TweetRepository(db);
+        var tags = new TagRepository(db);
         var importer = new JsonlImporter(db);
         _readQueue = new ReadMarkQueue(db);
         var fetchService = new FetchProcessService(settings);
         var iconCache = new IconCache(settings.EffectiveDataDir);
 
-        var mainVm = new MainViewModel(db, users, tweets, importer, _readQueue, fetchService, iconCache);
+        var mainVm = new MainViewModel(db, users, tweets, tags, importer, _readQueue, fetchService, iconCache);
         var window = new MainWindow(settings) { DataContext = mainVm };
         MainWindow = window;
         window.Show();

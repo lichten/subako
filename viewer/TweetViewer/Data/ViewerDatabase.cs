@@ -6,11 +6,11 @@ namespace TweetViewer.Data;
 /// <summary>
 /// data/viewer.db の接続とスキーマを管理する。
 /// tweets / tweet_media は JSONL から再構築可能な派生データ、
-/// users / read_state は正データ(docs/data-layer.md 参照)。
+/// users / read_state / tags / user_tags は正データ(docs/data-layer.md 参照)。
 /// </summary>
 public sealed class ViewerDatabase
 {
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
 
     public string DataDir { get; }
     public string DbPath { get; }
@@ -115,7 +115,20 @@ public sealed class ViewerDatabase
 
             CREATE INDEX IF NOT EXISTS ix_read_state_user ON read_state(username);
 
-            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '3');
+            CREATE TABLE IF NOT EXISTS tags (
+              tag_id INTEGER PRIMARY KEY,
+              name   TEXT NOT NULL UNIQUE COLLATE NOCASE
+            );
+
+            CREATE TABLE IF NOT EXISTS user_tags (
+              username TEXT NOT NULL COLLATE NOCASE,
+              tag_id   INTEGER NOT NULL,
+              PRIMARY KEY (username, tag_id)
+            ) WITHOUT ROWID;
+
+            CREATE INDEX IF NOT EXISTS ix_user_tags_tag ON user_tags(tag_id);
+
+            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '4');
             """;
         cmd.ExecuteNonQuery();
 
@@ -138,6 +151,14 @@ public sealed class ViewerDatabase
             Migrate(conn, 3, """
                 ALTER TABLE tweet_media ADD COLUMN origin INTEGER NOT NULL DEFAULT 0;
                 """);
+        if (stored < 4)
+        {
+            // tags / user_tags は上の CREATE TABLE IF NOT EXISTS で作成済み。
+            // テーブル追加のみのため派生データのリセットは行わない。
+            using var cmd4 = conn.CreateCommand();
+            cmd4.CommandText = "UPDATE schema_meta SET value = '4' WHERE key = 'schema_version'";
+            cmd4.ExecuteNonQuery();
+        }
     }
 
     /// <summary>
