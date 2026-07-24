@@ -51,10 +51,18 @@ def main():
     parser.add_argument("--max-requests", type=int, default=None,
                         help="この実行で消費する API リクエスト数の上限。到達したら中断し (exit 10)、"
                              "再実行で続きから再開する")
+    parser.add_argument("--backfill-since", default="2014-01-01", metavar="YYYY-MM-DD",
+                        help="検索バックフィルで過去へ遡る開始日 (既定: 2014-01-01。"
+                             "X の検索インデックスは 2014 年以前をほぼ返さない)")
     args = parser.parse_args()
 
     if bool(args.username) == bool(args.search):
         parser.error("username か --search のどちらか一方を指定してください")
+    try:
+        backfill_since = datetime.strptime(
+            args.backfill_since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        parser.error("--backfill-since は YYYY-MM-DD 形式で指定してください")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logger = logging.getLogger("main")
@@ -68,8 +76,8 @@ def main():
     client = SorsaClient(api_key, requests_per_second=args.rps)
 
     if args.search:
-        if args.fresh or args.backfill or args.update:
-            logger.warning("--search 指定時は --update / --fresh / --backfill を無視します")
+        if args.fresh:
+            logger.warning("--search 指定時は --fresh を無視します")
         name = args.search_name or slugify_query(args.search)
         storage = Storage(os.path.join(args.output_dir, "searches"), name)
         # クエリ原文をプラットフォーム共通メタデータとして保存 (ビューアが読む)
@@ -109,7 +117,12 @@ def main():
 
     try:
         if args.search:
-            fetcher.fetch_search(args.search)
+            if args.update and args.backfill:
+                logger.warning("--update 指定時は --backfill を無視します")
+            fetcher.fetch_search(
+                args.search, update=args.update,
+                backfill=args.backfill and not args.update,
+                backfill_since=backfill_since)
         elif args.update:
             if args.fresh or args.backfill:
                 logger.warning("--update 指定時は --fresh / --backfill を無視します")

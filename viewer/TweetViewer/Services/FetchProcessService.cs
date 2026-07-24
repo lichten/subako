@@ -8,8 +8,12 @@ public enum FetchMode
 {
     Update,
     Backfill,
-    /// <summary>キーワード検索 (/search-tweets)。username は検索バケット ID (searches/&lt;slug&gt;)。</summary>
+    /// <summary>キーワード検索の初回取得。username は検索バケット ID (searches/&lt;slug&gt;)。</summary>
     Search,
+    /// <summary>検索の最新差分 (--update)。</summary>
+    SearchUpdate,
+    /// <summary>検索の過去期間補完 (--backfill + --backfill-since)。</summary>
+    SearchBackfill,
 }
 
 public sealed record FetchResult(int ExitCode, bool Cancelled);
@@ -27,7 +31,7 @@ public sealed class FetchProcessService
 
     public async Task<FetchResult> RunAsync(
         string username, FetchMode mode, int? maxRequests, IProgress<string> log, CancellationToken ct,
-        string? searchQuery = null)
+        string? searchQuery = null, string? backfillSince = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -41,26 +45,37 @@ public sealed class FetchProcessService
             CreateNoWindow = true,
         };
         psi.ArgumentList.Add("main.py");
-        if (mode != FetchMode.Search)
+        var isSearch = mode is FetchMode.Search or FetchMode.SearchUpdate or FetchMode.SearchBackfill;
+        if (!isSearch)
             psi.ArgumentList.Add(username);
         // 共有データフォルダにも対応するため保存先を常に明示する
         psi.ArgumentList.Add("--output-dir");
         psi.ArgumentList.Add(_settings.EffectiveDataDir);
+        if (isSearch)
+        {
+            // username は "searches/<slug>" — main.py には slug のみ渡す
+            psi.ArgumentList.Add("--search");
+            psi.ArgumentList.Add(searchQuery
+                ?? throw new ArgumentNullException(nameof(searchQuery)));
+            psi.ArgumentList.Add("--search-name");
+            psi.ArgumentList.Add(username["searches/".Length..]);
+        }
         switch (mode)
         {
             case FetchMode.Update:
+            case FetchMode.SearchUpdate:
                 psi.ArgumentList.Add("--update");
                 break;
             case FetchMode.Backfill:
                 psi.ArgumentList.Add("--backfill");
                 break;
-            case FetchMode.Search:
-                // username は "searches/<slug>" — main.py には slug のみ渡す
-                psi.ArgumentList.Add("--search");
-                psi.ArgumentList.Add(searchQuery
-                    ?? throw new ArgumentNullException(nameof(searchQuery)));
-                psi.ArgumentList.Add("--search-name");
-                psi.ArgumentList.Add(username["searches/".Length..]);
+            case FetchMode.SearchBackfill:
+                psi.ArgumentList.Add("--backfill");
+                if (backfillSince is { Length: > 0 })
+                {
+                    psi.ArgumentList.Add("--backfill-since");
+                    psi.ArgumentList.Add(backfillSince);
+                }
                 break;
         }
         if (maxRequests is { } limit)

@@ -52,7 +52,9 @@
                             <Grid Margin="4,4" Background="Transparent">
                                 <Grid.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="差分更新..." Click="MenuSearchUpdate_Click" />
+                                        <MenuItem Header="更新 (差分取得)..." Click="MenuSearchUpdate_Click" />
+                                        <MenuItem Header="過去期間を取得 (バックフィル)..." Click="MenuSearchBackfill_Click" />
+                                        <Separator />
                                         <MenuItem Header="削除..." Click="MenuSearchDelete_Click" />
                                     </ContextMenu>
                                 </Grid.ContextMenu>

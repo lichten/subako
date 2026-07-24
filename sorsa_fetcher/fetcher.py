@@ -178,16 +178,31 @@ class TweetFetcher:
 
     # ---- キーワード検索 (検索バケット data/searches/<slug>/) ----
 
-    def fetch_search(self, query):
-        """任意クエリの検索取得。初回は cursor 保存つき全ページング、以降は差分。
+    def fetch_search(self, query, update=False, backfill=False, backfill_since=None):
+        """任意クエリの検索取得。
 
         X 標準の検索演算子 (スペース=AND / OR / "フレーズ" / (グループ) /
         -除外 / lang: / min_faves: / min_retweets: / since: / until: など) を
         そのままクエリに書ける (Sorsa はクエリを素通しする)。
+
+        - update=True: 常に最新から差分取得 (非空ページ全件既知で停止)
+        - backfill=True: 初回ページングを完走した後、検索カーソルの終端より
+          古い期間を since/until 窓で backfill_since (既定 2014-01-01) まで補完
+        - 指定なし: 初回は cursor 保存つき全ページング (再開可)、完了後は差分
         """
         state = self.storage.load_state()
         state["query"] = query
         self.storage.save_state(state)
+        if update:
+            self._search_update(query)
+            return
+        if backfill:
+            if not state.get("search_done"):
+                self._search_initial(query, state)
+            start = backfill_since or datetime(2014, 1, 1, tzinfo=timezone.utc)
+            end = self.oldest_saved_datetime() or datetime.now(timezone.utc)
+            self._windowed_backfill(f"({query})", start, end)
+            return
         if state.get("search_done"):
             self._search_update(query)
         else:
@@ -309,6 +324,15 @@ class TweetFetcher:
         oldest = self.oldest_saved_datetime()
         end = oldest or datetime.now(timezone.utc)
         start = account_created_at or datetime(2006, 3, 21, tzinfo=timezone.utc)
+        self._windowed_backfill(
+            f"from:{self.username} include:nativeretweets", start, end)
+
+    def _windowed_backfill(self, base_query, start, end):
+        """base_query に since/until を付けた30日窓で end から start まで遡る。
+
+        完了済み窓は state.json の backfill_done_windows (日付キー) でスキップ
+        するため、ユーザー/検索どちらのバックフィルとも中断再開に耐える。
+        """
         if start >= end:
             logger.info("backfill 対象期間がありません")
             return
@@ -323,21 +347,18 @@ class TweetFetcher:
         while window_end > start:
             self._check_budget()
             window_start = max(window_end - timedelta(days=30), start)
-            self._backfill_window(window_start, window_end, done_windows, state)
+            self._backfill_window(base_query, window_start, window_end, done_windows, state)
             window_end = window_start
         logger.info("バックフィル完了: 全期間の検索窓を処理しました")
 
     def _window_key(self, start, end):
         return f"{start.date()}..{end.date()}"
 
-    def _backfill_window(self, start, end, done_windows, state):
+    def _backfill_window(self, base_query, start, end, done_windows, state):
         key = self._window_key(start, end)
         if key in done_windows:
             return
-        query = (
-            f"from:{self.username} "
-            f"since:{start.date()} until:{end.date()} include:nativeretweets"
-        )
+        query = f"{base_query} since:{start.date()} until:{end.date()}"
         cursor = None
         window_count = 0
         while True:
@@ -355,8 +376,8 @@ class TweetFetcher:
         if window_count >= _WINDOW_SUSPECT_COUNT and span.days > _MIN_WINDOW_DAYS:
             middle = start + span / 2
             logger.info("[backfill] %s は取得数が多いため分割して再確認します", key)
-            self._backfill_window(start, middle, done_windows, state)
-            self._backfill_window(middle, end, done_windows, state)
+            self._backfill_window(base_query, start, middle, done_windows, state)
+            self._backfill_window(base_query, middle, end, done_windows, state)
         done_windows.add(key)
         state["backfill_done_windows"] = sorted(done_windows)
         self.storage.save_state(state)

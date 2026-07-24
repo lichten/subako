@@ -141,13 +141,15 @@ public partial class MainWindow : Window
             StartFetch(user.Username, FetchMode.Backfill, dialog.MaxRequests);
     }
 
-    private void StartFetch(string username, FetchMode mode, int? maxRequests, string? searchQuery = null)
+    private void StartFetch(string username, FetchMode mode, int? maxRequests,
+        string? searchQuery = null, string? backfillSince = null)
     {
         if (Vm.IsFetching)
             return;
         Vm.IsFetching = true;
         var dialogVm = new FetchDialogViewModel(
-            Vm.FetchService, username, Vm.OnFetchCompletedAsync, mode, maxRequests, searchQuery);
+            Vm.FetchService, username, Vm.OnFetchCompletedAsync, mode, maxRequests, searchQuery,
+            backfillSince);
         var window = new UpdateLogWindow { Owner = this, DataContext = dialogVm };
         window.Show();
         _ = RunFetchAsync(dialogVm);
@@ -170,9 +172,19 @@ public partial class MainWindow : Window
         if (sender is not MenuItem { DataContext: SearchItemViewModel item } || Vm.IsFetching)
             return;
         // リクエスト上限は差分更新でも必須 (BackfillDialog を上限入力に再利用)
-        var dialog = new BackfillDialog { Owner = this, Title = "検索を差分更新" };
+        var dialog = new BackfillDialog { Owner = this, Title = "検索を更新 (差分取得)" };
         if (dialog.ShowDialog() == true)
-            StartFetch(item.Username, FetchMode.Search, dialog.MaxRequests, item.Query);
+            StartFetch(item.Username, FetchMode.SearchUpdate, dialog.MaxRequests, item.Query);
+    }
+
+    private void MenuSearchBackfill_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: SearchItemViewModel item } || Vm.IsFetching)
+            return;
+        var dialog = new SearchBackfillDialog { Owner = this };
+        if (dialog.ShowDialog() == true)
+            StartFetch(item.Username, FetchMode.SearchBackfill, dialog.MaxRequests,
+                item.Query, dialog.Since);
     }
 
     private async void MenuSearchDelete_Click(object sender, RoutedEventArgs e)

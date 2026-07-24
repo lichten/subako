@@ -46,8 +46,15 @@ data/
   | `from:user` / `since:YYYY-MM-DD` / `until:YYYY-MM-DD` | 投稿者・期間 |
 
   例: `(sts2 OR "slay the spire 2" OR スレスパ2) lang:ja min_faves:10`
-- 初回取得は `state.json` の `search_cursor` / `search_done` で中断再開、
-  2回目以降 (`search_done` 後) は新しい順に辿り非空ページ全件既知で停止する差分取得。
+- **取得モード** (ユーザーアーカイブと対称):
+  - 指定なし: 初回は `state.json` の `search_cursor` / `search_done` で中断再開つき
+    全ページング、`search_done` 後は差分
+  - `--update`: 常に最新から差分 (新しい順に辿り、非空ページ全件既知で停止)
+  - `--backfill [--backfill-since YYYY-MM-DD]`: 初回ページングを完走した後、
+    検索カーソルの終端より古い期間を `(query) since:.. until:..` の30日窓で
+    最古保存ツイートから `--backfill-since` (既定 2014-01-01) まで遡って補完。
+    完了済み窓はユーザーバックフィルと同じ `backfill_done_windows` に記録され再開可。
+    クエリ自体に `since:` / `until:` を含む検索は窓指定と競合するため非推奨。
 - ビューアはバケットを `users.username = "searches/<slug>"` の仮想行として登録し、
   ユーザー一覧とは別の「検索」セクションに表示する (§4.2 注記)。
 
