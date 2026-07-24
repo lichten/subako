@@ -1,26 +1,31 @@
 using System.Windows;
+using TweetViewer.Data;
 
 namespace TweetViewer.Views;
 
-public partial class SearchDialog : Window
+public partial class SearchEditDialog : Window
 {
-    public string Query { get; private set; } = "";
     /// <summary>任意の表示名 (空欄 = null でクエリを表示)。</summary>
     public string? SearchName { get; private set; }
-    public long? MinRetweets { get; private set; }
-    public long? MinFaves { get; private set; }
-    public int MaxRequests { get; private set; }
 
-    public SearchDialog()
+    /// <summary>下限演算子を再合成した最終クエリ。</summary>
+    public string Query { get; private set; } = "";
+
+    public SearchEditDialog(string? currentName, string currentQuery)
     {
         InitializeComponent();
-        Loaded += (_, _) => QueryBox.Focus();
+        var (baseQuery, minRetweets, minFaves) = SearchQueryOperators.Split(currentQuery);
+        NameBox.Text = currentName ?? "";
+        QueryBox.Text = baseQuery;
+        MinRetweetsBox.Text = minRetweets?.ToString() ?? "";
+        MinFavesBox.Text = minFaves?.ToString() ?? "";
+        Loaded += (_, _) => NameBox.Focus();
     }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
-        var query = QueryBox.Text.Trim();
-        if (query.Length == 0)
+        var baseQuery = QueryBox.Text.Trim();
+        if (baseQuery.Length == 0)
         {
             MessageBox.Show("検索クエリを入力してください。",
                 "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -33,17 +38,8 @@ public partial class SearchDialog : Window
                 "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        if (!int.TryParse(MaxRequestsBox.Text.Trim(), out var maxRequests) || maxRequests <= 0)
-        {
-            MessageBox.Show("最大リクエスト数は正の整数で指定してください。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        Query = query;
+        Query = SearchQueryOperators.Compose(baseQuery, minRt, minFav);
         SearchName = NameBox.Text.Trim() is { Length: > 0 } name ? name : null;
-        MinRetweets = minRt;
-        MinFaves = minFav;
-        MaxRequests = maxRequests;
         DialogResult = true;
     }
 

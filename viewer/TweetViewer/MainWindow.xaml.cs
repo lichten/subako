@@ -163,7 +163,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != true)
             return;
         var (bucketId, finalQuery) = await Vm.StartApiSearchAsync(
-            dialog.Query, dialog.MinRetweets, dialog.MinFaves);
+            dialog.Query, dialog.MinRetweets, dialog.MinFaves, dialog.SearchName);
         StartFetch(bucketId, FetchMode.Search, dialog.MaxRequests, finalQuery);
     }
 
@@ -185,6 +185,16 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == true)
             StartFetch(item.Username, FetchMode.SearchBackfill, dialog.MaxRequests,
                 item.Query, dialog.Since);
+    }
+
+    private async void MenuSearchEdit_Click(object sender, RoutedEventArgs e)
+    {
+        // 取得中の編集はクエリ書き換えが競合するため不可
+        if (sender is not MenuItem { DataContext: SearchItemViewModel item } || Vm.IsFetching)
+            return;
+        var dialog = new SearchEditDialog(item.Name, item.Query) { Owner = this };
+        if (dialog.ShowDialog() == true)
+            await Vm.UpdateSearchAsync(item, dialog.Query, dialog.SearchName);
     }
 
     private async void MenuSearchDelete_Click(object sender, RoutedEventArgs e)

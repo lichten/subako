@@ -11,7 +11,13 @@ public sealed partial class SearchItemViewModel : ObservableObject
 
     /// <summary>検索クエリ原文 (search.json 由来。読めない場合はフォルダ名)。</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Label))]
     private string _query;
+
+    /// <summary>任意の表示名 (search.json の name。null = 未設定でクエリを表示)。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Label))]
+    private string? _name;
 
     [ObservableProperty]
     private long _tweetCount;
@@ -19,17 +25,22 @@ public sealed partial class SearchItemViewModel : ObservableObject
     [ObservableProperty]
     private long _unreadCount;
 
-    public SearchItemViewModel(UserRow row, string query)
+    /// <summary>サイドバー・タイムラインヘッダの表示ラベル。</summary>
+    public string Label => Name ?? Query;
+
+    public SearchItemViewModel(UserRow row, string query, string? name)
     {
         Username = row.Username;
         _query = query;
+        _name = name;
         _tweetCount = row.TweetCount;
         _unreadCount = row.UnreadCount;
     }
 
-    public void ApplyCounts(UserRow row, string query)
+    public void ApplyCounts(UserRow row, string query, string? name)
     {
         Query = query;
+        Name = name;
         TweetCount = row.TweetCount;
         UnreadCount = row.UnreadCount;
     }

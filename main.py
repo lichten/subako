@@ -80,26 +80,27 @@ def main():
             logger.warning("--search 指定時は --fresh を無視します")
         name = args.search_name or slugify_query(args.search)
         storage = Storage(os.path.join(args.output_dir, "searches"), name)
-        # クエリ原文をプラットフォーム共通メタデータとして保存 (ビューアが読む)
+        # クエリ原文をプラットフォーム共通メタデータとして保存 (ビューアも読み書きする)。
+        # 既存とクエリが異なる場合は「取得済みを残したままのクエリ変更」として
+        # query キーだけ差し替える (name / created_at 等の他キーは保持)
         meta_path = storage.base_dir / "search.json"
+        meta = {}
         if meta_path.exists():
             try:
-                saved_query = json.loads(meta_path.read_text(encoding="utf-8")).get("query")
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
-                saved_query = None
-            if saved_query is not None and saved_query != args.search:
-                logger.error(
-                    "保存フォルダ %s は別のクエリ %r で使用中です。--search-name で別名を指定してください",
-                    storage.base_dir, saved_query,
-                )
-                return 1
-        else:
-            meta_path.write_text(
-                json.dumps(
-                    {"query": args.search,
-                     "created_at": datetime.now(timezone.utc).isoformat()},
-                    ensure_ascii=False, indent=2),
-                encoding="utf-8")
+                logger.warning("search.json が壊れているため作り直します")
+                meta = {}
+        saved_query = meta.get("query")
+        if saved_query is not None and saved_query != args.search:
+            logger.warning(
+                "検索クエリを変更します: %r → %r (取得済みツイートは保持)",
+                saved_query, args.search,
+            )
+        meta["query"] = args.search
+        meta.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+        meta_path.write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     else:
         storage = Storage(args.output_dir, args.username.lstrip("@"))
 

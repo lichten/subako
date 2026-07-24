@@ -259,7 +259,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (SelectedSearch is { } search)
             return IsMediaView
                 ? MediaGrid.ResetAsync(search.Username)
-                : TweetList.ResetAsync(search.Username, search.Query, null, UnreadOnly);
+                : TweetList.ResetAsync(search.Username, search.Label, null, UnreadOnly);
         return IsMediaView
             ? MediaGrid.ResetAsync(SelectedUser?.Username)
             : TweetList.ResetAsync(
@@ -314,19 +314,19 @@ public sealed partial class MainViewModel : ObservableObject
             await ResetListAsync();
     }
 
-    /// <summary>検索バケット一覧を再読込 (search.json のクエリをラベルに使う)。</summary>
+    /// <summary>検索バケット一覧を再読込 (ラベルは search.json の name → query → フォルダ名)。</summary>
     public async Task RefreshSearchesAsync()
     {
         var rows = await _users.GetSearchBucketsAsync();
         var byId = Searches.ToDictionary(s => s.Username, StringComparer.OrdinalIgnoreCase);
         foreach (var row in rows)
         {
-            var query = SearchMetadata.TryRead(_db.UserDir(row.Username))?.Query
-                        ?? row.Username["searches/".Length..];
+            var meta = SearchMetadata.TryRead(_db.UserDir(row.Username));
+            var query = meta?.Query ?? row.Username["searches/".Length..];
             if (byId.Remove(row.Username, out var existing))
-                existing.ApplyCounts(row, query);
+                existing.ApplyCounts(row, query, meta?.Name);
             else
-                Searches.Add(new SearchItemViewModel(row, query));
+                Searches.Add(new SearchItemViewModel(row, query, meta?.Name));
         }
         foreach (var removed in byId.Values)
         {
@@ -336,23 +336,32 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>検索の名称・クエリを変更する (SearchEditDialog から)。取得済みツイートは保持。</summary>
+    public async Task UpdateSearchAsync(SearchItemViewModel item, string newQuery, string? newName)
+    {
+        var queryChanged = item.Query != newQuery;
+        SearchMetadata.Write(_db.UserDir(item.Username), newQuery, newName);
+        await RefreshSearchesAsync();
+        if (SelectedSearch == item)
+            await ResetListAsync();
+        StatusText = queryChanged
+            ? "クエリを変更しました。次回の更新/バックフィルから新しい条件で取得します"
+            : $"検索「{item.Label}」を更新しました";
+    }
+
     /// <summary>
     /// 新規 API 検索の準備 (SearchDialog から)。RT数・いいね数の下限はサーバー側で
     /// 絞るため min_retweets: / min_faves: 演算子としてクエリに付与する。
     /// OR の結合順が壊れないよう元クエリを (...) で括る。
     /// </summary>
     public async Task<(string BucketId, string FinalQuery)> StartApiSearchAsync(
-        string query, long? minRetweets, long? minFaves)
+        string query, long? minRetweets, long? minFaves, string? name = null)
     {
-        var finalQuery = query.Trim();
-        if (minRetweets is not null || minFaves is not null)
-        {
-            finalQuery = $"({finalQuery})"
-                + (minRetweets is { } r ? $" min_retweets:{r}" : "")
-                + (minFaves is { } f ? $" min_faves:{f}" : "");
-        }
+        var finalQuery = SearchQueryOperators.Compose(query, minRetweets, minFaves);
         var bucketId = "searches/" + SearchSlug.From(finalQuery);
         await _users.AddAsync(bucketId);
+        // 名称が最初から表示されるよう search.json を先に作る (Python 側は既存一致で素通り)
+        SearchMetadata.Write(_db.UserDir(bucketId), finalQuery, name);
         await RefreshSearchesAsync();
         return (bucketId, finalQuery);
     }

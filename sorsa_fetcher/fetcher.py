@@ -191,6 +191,12 @@ class TweetFetcher:
         - 指定なし: 初回は cursor 保存つき全ページング (再開可)、完了後は差分
         """
         state = self.storage.load_state()
+        if state.get("query") not in (None, query):
+            # クエリ変更: 旧クエリの結果空間に対する進捗は無効なのでリセットする。
+            # 取得済みツイートは seen_ids の重複排除で保持される
+            logger.warning("クエリが変更されたため検索の取得状態をリセットします (取得済みツイートは保持)")
+            for key in ("search_cursor", "search_done", "backfill_done_windows"):
+                state.pop(key, None)
         state["query"] = query
         self.storage.save_state(state)
         if update:
