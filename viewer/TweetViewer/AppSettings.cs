@@ -15,6 +15,13 @@ public sealed class AppSettings
     /// <summary>データフォルダの場所。空なら RepoDir\data (従来動作)。</summary>
     public string DataDir { get; set; } = "";
 
+    /// <summary>前回終了時のウィンドウ配置 (通常状態の値。null = 未保存で既定動作)。</summary>
+    public double? WindowLeft { get; set; }
+    public double? WindowTop { get; set; }
+    public double? WindowWidth { get; set; }
+    public double? WindowHeight { get; set; }
+    public bool WindowMaximized { get; set; }
+
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "TweetViewer", "settings.json");

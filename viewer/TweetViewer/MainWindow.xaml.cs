@@ -14,6 +14,46 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = settings;
+        RestoreWindowPlacement();
+    }
+
+    /// <summary>前回終了時のウィンドウ配置を復元する。画面外 (モニタ構成変更) なら既定のまま。</summary>
+    private void RestoreWindowPlacement()
+    {
+        if (_settings is { WindowLeft: { } left, WindowTop: { } top,
+                           WindowWidth: { } width, WindowHeight: { } height }
+            && width > 0 && height > 0
+            && left < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth
+            && top < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight
+            && left + width > SystemParameters.VirtualScreenLeft
+            && top + height > SystemParameters.VirtualScreenTop)
+        {
+            Left = left;
+            Top = top;
+            Width = width;
+            Height = height;
+        }
+        // 通常時の矩形を先に適用しておくことで、最大化解除時に前回サイズへ戻る
+        if (_settings.WindowMaximized)
+            WindowState = WindowState.Maximized;
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // 最大化/最小化中は通常状態の矩形 (RestoreBounds) を保存する
+        var bounds = WindowState == WindowState.Normal
+            ? new Rect(Left, Top, Width, Height)
+            : RestoreBounds;
+        if (!bounds.IsEmpty)
+        {
+            _settings.WindowLeft = bounds.Left;
+            _settings.WindowTop = bounds.Top;
+            _settings.WindowWidth = bounds.Width;
+            _settings.WindowHeight = bounds.Height;
+        }
+        _settings.WindowMaximized = WindowState == WindowState.Maximized;
+        _settings.Save();
+        base.OnClosing(e);
     }
 
     private MainViewModel Vm => (MainViewModel)DataContext;
