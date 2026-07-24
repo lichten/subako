@@ -197,6 +197,7 @@
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      DataContext="{Binding TweetList}">
                 <b:Interaction.Behaviors>
+                    <behaviors:ScrollToTopOnResetBehavior />
                     <behaviors:ScrollReadBehavior />
                     <behaviors:InfiniteScrollBehavior LoadMoreCommand="{Binding LoadMoreCommand}" />
                 </b:Interaction.Behaviors>
@@ -345,6 +346,7 @@
                      ScrollViewer.CanContentScroll="True"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <b:Interaction.Behaviors>
+                    <behaviors:ScrollToTopOnResetBehavior />
                     <behaviors:InfiniteScrollBehavior LoadMoreCommand="{Binding LoadMoreCommand}" />
                 </b:Interaction.Behaviors>
                 <ListBox.ItemContainerStyle>
