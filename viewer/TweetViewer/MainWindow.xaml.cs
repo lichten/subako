@@ -96,11 +96,29 @@ public partial class MainWindow : Window
     private void ClearTagFilter_Click(object sender, RoutedEventArgs e) =>
         Vm.SelectedTagFilter = null;
 
-    /// <summary>「タグ」サブメニューを開くたびに現在のタグ一覧から項目を作り直す。</summary>
+    /// <summary>「タグ」サブメニューを開くたびに現在のタグ一覧から項目を作り直す (ユーザー行・検索行の両対応)。</summary>
     private void TagMenu_SubmenuOpened(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { DataContext: UserItemViewModel user } menu)
+        if (sender is not MenuItem menu)
             return;
+        Func<long, bool> hasTag;
+        Func<TagItemViewModel, bool, Task> toggle;
+        string username;
+        switch (menu.DataContext)
+        {
+            case UserItemViewModel user:
+                hasTag = user.HasTag;
+                toggle = (tag, on) => Vm.ToggleTagAsync(user, tag, on);
+                username = user.Username;
+                break;
+            case SearchItemViewModel search:
+                hasTag = search.HasTag;
+                toggle = (tag, on) => Vm.ToggleTagAsync(search, tag, on);
+                username = search.Username;
+                break;
+            default:
+                return;
+        }
         menu.Items.Clear();
         foreach (var tag in Vm.Tags)
         {
@@ -108,28 +126,28 @@ public partial class MainWindow : Window
             {
                 Header = tag.Name,
                 IsCheckable = true,
-                IsChecked = user.HasTag(tag.TagId),
+                IsChecked = hasTag(tag.TagId),
                 StaysOpenOnClick = true,   // 連続で付け外しできるように
             };
             var captured = tag;
-            item.Click += async (_, _) => await Vm.ToggleTagAsync(user, captured, item.IsChecked);
+            item.Click += async (_, _) => await toggle(captured, item.IsChecked);
             menu.Items.Add(item);
         }
         if (Vm.Tags.Count > 0)
             menu.Items.Add(new Separator());
         var add = new MenuItem { Header = "新しいタグ..." };
-        add.Click += (_, _) => AddTag(user);
+        add.Click += (_, _) => AddTag(username);
         menu.Items.Add(add);
         var manage = new MenuItem { Header = "タグの整理..." };
         manage.Click += (_, _) => new ManageTagsDialog(Vm) { Owner = this }.ShowDialog();
         menu.Items.Add(manage);
     }
 
-    private async void AddTag(UserItemViewModel user)
+    private async void AddTag(string username)
     {
         var dialog = new AddTagDialog { Owner = this };
         if (dialog.ShowDialog() == true && dialog.TagName is { Length: > 0 } name)
-            await Vm.CreateAndAssignTagAsync(name, user);
+            await Vm.CreateAndAssignTagAsync(name, username);
     }
 
     private void MenuBackfill_Click(object sender, RoutedEventArgs e)

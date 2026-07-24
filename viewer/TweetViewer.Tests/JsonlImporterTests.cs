@@ -233,10 +233,19 @@ public sealed class JsonlImporterTests : IDisposable
         Assert.Equal(1, CountTweets("alice"));
         Assert.Equal(1, CountTweets("searches/kw-12345678"));
 
+        // タグを両方に付与 → バケット削除でバケットの割当だけ消える
+        var tags = new TagRepository(_db);
+        var tagId = await tags.AddAsync("A");
+        await tags.AssignAsync("alice", tagId);
+        await tags.AssignAsync("searches/kw-12345678", tagId);
+
         // バケット削除ではアーカイブ側の行は残る
         await users.DeleteBucketAsync("searches/kw-12345678");
         Assert.Equal(0, CountTweets("searches/kw-12345678"));
         Assert.Equal(1, CountTweets("alice"));
+        var assignments = await tags.GetAssignmentsAsync();
+        Assert.False(assignments.ContainsKey("searches/kw-12345678"));
+        Assert.Equal(new[] { tagId }, assignments["alice"]);
     }
 
     [Fact]

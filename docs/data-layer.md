@@ -121,7 +121,7 @@ data/
 |---|---|---|
 | `tweets`, `tweet_media` | **派生** | tweets.jsonl からいつでも再構築可。手編集禁止 |
 | `users`, `read_state` | **正データ** | 破棄禁止。rebuild しても保持すること |
-| `tags`, `user_tags` | **正データ** | ユーザーへの独自タグ。JSONL から再構築不能。破棄禁止 |
+| `tags`, `user_tags` | **正データ** | ユーザーおよび検索バケットへの独自タグ (username 列にはバケット ID `searches/<slug>` も入る)。JSONL から再構築不能。破棄禁止 |
 | `schema_meta` | メタ | `schema_version` を格納 |
 
 `tweet_media` は `tweet_id` 単位で全バケット共有 (複合 PK 化後も tweet_id キーのまま)。

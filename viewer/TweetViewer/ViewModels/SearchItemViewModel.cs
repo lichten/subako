@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using TweetViewer.Models;
 
@@ -8,6 +9,9 @@ public sealed partial class SearchItemViewModel : ObservableObject
 {
     /// <summary>バケット ID (= users.username の "searches/&lt;slug&gt;")。</summary>
     public string Username { get; }
+
+    /// <summary>この検索に付与されたタグ (チップ表示・フィルタ判定用)。</summary>
+    public ObservableCollection<TagItemViewModel> Tags { get; } = new();
 
     /// <summary>検索クエリ原文 (search.json 由来。読めない場合はフォルダ名)。</summary>
     [ObservableProperty]
@@ -48,4 +52,14 @@ public sealed partial class SearchItemViewModel : ObservableObject
     public bool HasUnread => UnreadCount > 0;
 
     partial void OnUnreadCountChanged(long value) => OnPropertyChanged(nameof(HasUnread));
+
+    public bool HasTag(long tagId) => Tags.Any(t => t.TagId == tagId);
+
+    /// <summary>タグ割当を差し替える (RefreshTagsAsync から)。</summary>
+    public void ApplyTags(IEnumerable<TagItemViewModel> tags)
+    {
+        Tags.Clear();
+        foreach (var tag in tags)
+            Tags.Add(tag);
+    }
 }

@@ -68,6 +68,18 @@ public sealed class TagRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task 検索バケットIDにも付与できる()
+    {
+        var tag = await _repo.AddAsync("A");
+        await _repo.AssignAsync("searches/kw-12345678", tag);
+
+        var map = await _repo.GetAssignmentsAsync();
+        Assert.Equal(new[] { tag }, map["searches/kw-12345678"]);
+        var all = await _repo.GetAllAsync();
+        Assert.Equal(1, all.Single().UserCount);
+    }
+
+    [Fact]
     public async Task DeleteAsync_user_tagsも同時に消える()
     {
         var tag = await _repo.AddAsync("A");

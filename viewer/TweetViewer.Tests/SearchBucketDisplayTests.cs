@@ -36,7 +36,7 @@ public sealed class SearchBucketDisplayTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task SelectingSearchInMainViewModelLoadsTimeline()
+    public void SelectingSearchInMainViewModelLoadsTimeline() => RunOnDispatcher(async () =>
     {
         // 実際の操作フロー: 検索作成 → fetch 完了 (JSONL あり) → 取込 → サイドバーで選択
         var users = new UserRepository(_db);
@@ -69,7 +69,7 @@ public sealed class SearchBucketDisplayTests : IAsyncDisposable
         await WaitForItemsAsync(vm);
         Assert.Single(vm.TweetList.Items);
         Assert.Equal("Someone", vm.TweetList.Items[0].HeaderDisplayName);
-    }
+    });
 
     private static async Task WaitForItemsAsync(MainViewModel vm)
     {

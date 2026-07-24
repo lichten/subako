@@ -44,6 +44,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>保存済み検索 (サイドバー「検索」セクション)。</summary>
     public ObservableCollection<SearchItemViewModel> Searches { get; } = new();
 
+    /// <summary>検索セクション表示用のタグフィルタ済みビュー。</summary>
+    public ICollectionView SearchesView { get; }
+
     /// <summary>選択中の検索バケット (SelectedUser と相互排他)。</summary>
     [ObservableProperty]
     private SearchItemViewModel? _selectedSearch;
@@ -77,6 +80,8 @@ public sealed partial class MainViewModel : ObservableObject
         MediaGrid = new MediaGridViewModel(db, tweets);
         UsersView = CollectionViewSource.GetDefaultView(Users);
         UsersView.Filter = FilterUser;
+        SearchesView = CollectionViewSource.GetDefaultView(Searches);
+        SearchesView.Filter = FilterSearch;
     }
 
     /// <summary>起動時: data/ 直下の既存アーカイブと検索バケットを登録 → 差分取込 → 一覧表示。</summary>
@@ -86,8 +91,8 @@ public sealed partial class MainViewModel : ObservableObject
         await _users.RegisterExistingDataDirsAsync();
         await _users.RegisterExistingSearchDirsAsync();
         await RefreshUsersAsync();
-        await RefreshTagsAsync();
         await RefreshSearchesAsync();
+        await RefreshTagsAsync();   // Users / Searches が埋まってからタグを反映
 
         var targets = Users.Select(u => u.Username)
             .Concat(Searches.Select(s => s.Username))
@@ -140,12 +145,21 @@ public sealed partial class MainViewModel : ObservableObject
     private bool FilterUser(object obj) =>
         SelectedTagFilter is not { } tag || ((UserItemViewModel)obj).HasTag(tag.TagId);
 
+    private bool FilterSearch(object obj) =>
+        SelectedTagFilter is not { } tag || ((SearchItemViewModel)obj).HasTag(tag.TagId);
+
     partial void OnSelectedTagFilterChanged(TagItemViewModel? value)
     {
         UsersView.Refresh();
-        // 選択中ユーザーがフィルタで消えたら表示中の先頭ユーザーを選択 (空ペイン回避)
+        SearchesView.Refresh();
+        // 選択中の項目がフィルタで消えたら表示中の先頭ユーザーを選択 (空ペイン回避)
         if (SelectedUser is not null && !FilterUser(SelectedUser))
             SelectedUser = UsersView.Cast<UserItemViewModel>().FirstOrDefault();
+        if (SelectedSearch is not null && !FilterSearch(SelectedSearch))
+        {
+            SelectedSearch = null;
+            SelectedUser ??= UsersView.Cast<UserItemViewModel>().FirstOrDefault();
+        }
     }
 
     /// <summary>tags / user_tags を再読込して Tags と各ユーザーの Tags を更新。</summary>
@@ -171,38 +185,53 @@ public sealed partial class MainViewModel : ObservableObject
         var assignments = await _tags.GetAssignmentsAsync();
         var tagById = Tags.ToDictionary(t => t.TagId);
         foreach (var user in Users)
-        {
-            var ids = assignments.TryGetValue(user.Username, out var list) ? list : (IReadOnlyList<long>)[];
-            user.ApplyTags(ids.Where(tagById.ContainsKey).Select(id => tagById[id]));
-        }
+            ApplyAssignedTags(user.Username, user.ApplyTags);
+        foreach (var search in Searches)
+            ApplyAssignedTags(search.Username, search.ApplyTags);
         UsersView.Refresh();
+        SearchesView.Refresh();
+
+        void ApplyAssignedTags(string username, Action<IEnumerable<TagItemViewModel>> apply)
+        {
+            var ids = assignments.TryGetValue(username, out var list) ? list : (IReadOnlyList<long>)[];
+            apply(ids.Where(tagById.ContainsKey).Select(id => tagById[id]));
+        }
     }
 
     /// <summary>タグの付け外し (ContextMenu のチェック項目から)。</summary>
-    public async Task ToggleTagAsync(UserItemViewModel user, TagItemViewModel tag, bool assign)
+    public Task ToggleTagAsync(UserItemViewModel user, TagItemViewModel tag, bool assign) =>
+        ToggleTagCoreAsync(user.Username, user.Tags, tag, assign);
+
+    /// <summary>検索バケット版のタグ付け外し。</summary>
+    public Task ToggleTagAsync(SearchItemViewModel search, TagItemViewModel tag, bool assign) =>
+        ToggleTagCoreAsync(search.Username, search.Tags, tag, assign);
+
+    private async Task ToggleTagCoreAsync(
+        string username, ObservableCollection<TagItemViewModel> tags, TagItemViewModel tag, bool assign)
     {
         if (assign)
         {
-            if (user.HasTag(tag.TagId))
+            if (tags.Any(t => t.TagId == tag.TagId))
                 return;
-            await _tags.AssignAsync(user.Username, tag.TagId);
-            user.Tags.Add(tag);
+            await _tags.AssignAsync(username, tag.TagId);
+            tags.Add(tag);
             tag.UserCount++;
         }
         else
         {
-            var existing = user.Tags.FirstOrDefault(t => t.TagId == tag.TagId);
+            var existing = tags.FirstOrDefault(t => t.TagId == tag.TagId);
             if (existing is null)
                 return;
-            await _tags.UnassignAsync(user.Username, tag.TagId);
-            user.Tags.Remove(existing);
+            await _tags.UnassignAsync(username, tag.TagId);
+            tags.Remove(existing);
             tag.UserCount = Math.Max(0, tag.UserCount - 1);
         }
         UsersView.Refresh();
+        SearchesView.Refresh();
     }
 
-    /// <summary>新規タグ作成 + そのユーザーへ付与 (AddTagDialog から)。</summary>
-    public async Task CreateAndAssignTagAsync(string name, UserItemViewModel user)
+    /// <summary>新規タグ作成 + 対象 (ユーザーまたは検索バケット) へ付与 (AddTagDialog から)。</summary>
+    public async Task CreateAndAssignTagAsync(string name, string username)
     {
         name = name.Trim();
         if (name.Length == 0)
@@ -211,7 +240,7 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
         var tagId = await _tags.AddAsync(name);
-        await _tags.AssignAsync(user.Username, tagId);
+        await _tags.AssignAsync(username, tagId);
         await RefreshTagsAsync();
     }
 

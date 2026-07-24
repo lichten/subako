@@ -136,6 +136,7 @@ public sealed class UserRepository
                 cmd.CommandText = """
                     DELETE FROM tweets WHERE username = $u;
                     DELETE FROM tweet_media WHERE tweet_id NOT IN (SELECT tweet_id FROM tweets);
+                    DELETE FROM user_tags WHERE username = $u;
                     DELETE FROM users WHERE username = $u;
                     """;
                 cmd.Parameters.AddWithValue("$u", bucketId);

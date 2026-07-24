@@ -42,7 +42,7 @@
                             ToolTip="X 全体をキーワード検索して保存" Click="AddSearch_Click" />
                     <TextBlock Text="検索" FontWeight="Bold" VerticalAlignment="Center" />
                 </DockPanel>
-                <ListBox ItemsSource="{Binding Searches}"
+                <ListBox ItemsSource="{Binding SearchesView}"
                          SelectedItem="{Binding SelectedSearch}"
                          BorderThickness="0" Background="Transparent"
                          HorizontalContentAlignment="Stretch"
@@ -54,6 +54,11 @@
                                     <ContextMenu>
                                         <MenuItem Header="更新 (差分取得)..." Click="MenuSearchUpdate_Click" />
                                         <MenuItem Header="過去期間を取得 (バックフィル)..." Click="MenuSearchBackfill_Click" />
+                                        <Separator />
+                                        <MenuItem Header="タグ" SubmenuOpened="TagMenu_SubmenuOpened">
+                                            <!-- 子が空だと SubmenuOpened が発火しないためのプレースホルダ -->
+                                            <MenuItem Header="(読込中)" />
+                                        </MenuItem>
                                         <Separator />
                                         <MenuItem Header="編集 (名称・クエリ)..." Click="MenuSearchEdit_Click" />
                                         <MenuItem Header="削除..." Click="MenuSearchDelete_Click" />
@@ -71,6 +76,20 @@
                                                      FontSize="12" TextTrimming="CharacterEllipsis" />
                                     <TextBlock FontSize="11" Foreground="#666"
                                                Text="{Binding TweetCount, StringFormat={}{0:N0}件}" />
+                                    <ItemsControl ItemsSource="{Binding Tags}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:TagItemViewModel}">
+                                                <Border Background="#E1E8ED" CornerRadius="7" Padding="5,1" Margin="0,2,4,0">
+                                                    <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#555" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
                                 <Border Grid.Column="2" Background="#1D9BF0" CornerRadius="9"
                                         MinWidth="18" Height="18" Margin="4,0" Padding="5,0"
