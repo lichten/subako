@@ -14,6 +14,7 @@ public sealed partial class FetchDialogViewModel : ObservableObject
     private readonly Func<string, Task> _onCompleted;
     private readonly FetchMode _mode;
     private readonly int? _maxRequests;
+    private readonly string? _searchQuery;
     private readonly CancellationTokenSource _cts = new();
 
     public string Username { get; }
@@ -28,13 +29,14 @@ public sealed partial class FetchDialogViewModel : ObservableObject
 
     public FetchDialogViewModel(
         FetchProcessService service, string username, Func<string, Task> onCompleted,
-        FetchMode mode = FetchMode.Update, int? maxRequests = null)
+        FetchMode mode = FetchMode.Update, int? maxRequests = null, string? searchQuery = null)
     {
         _service = service;
         Username = username;
         _onCompleted = onCompleted;
         _mode = mode;
         _maxRequests = maxRequests;
+        _searchQuery = searchQuery;
     }
 
     public async Task StartAsync()
@@ -48,11 +50,15 @@ public sealed partial class FetchDialogViewModel : ObservableObject
         });
         try
         {
-            var result = await _service.RunAsync(Username, _mode, _maxRequests, progress, _cts.Token);
+            var result = await _service.RunAsync(
+                Username, _mode, _maxRequests, progress, _cts.Token, _searchQuery);
             ResultText = result switch
             {
                 { Cancelled: true } => "中断しました(途中までの取得分は保存済み)",
                 { ExitCode: 0 } => "取得完了",
+                { ExitCode: BudgetExhaustedExitCode } when _mode == FetchMode.Search =>
+                    "リクエスト上限に達したため中断しました(取得分は保存済み)。" +
+                    "再度この検索を差分更新すると続きから再開します",
                 { ExitCode: BudgetExhaustedExitCode } =>
                     "リクエスト上限に達したため中断しました(取得分は保存済み)。" +
                     "再度バックフィルを実行すると続きから再開します",

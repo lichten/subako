@@ -8,6 +8,8 @@ public enum FetchMode
 {
     Update,
     Backfill,
+    /// <summary>キーワード検索 (/search-tweets)。username は検索バケット ID (searches/&lt;slug&gt;)。</summary>
+    Search,
 }
 
 public sealed record FetchResult(int ExitCode, bool Cancelled);
@@ -24,7 +26,8 @@ public sealed class FetchProcessService
     public FetchProcessService(AppSettings settings) => _settings = settings;
 
     public async Task<FetchResult> RunAsync(
-        string username, FetchMode mode, int? maxRequests, IProgress<string> log, CancellationToken ct)
+        string username, FetchMode mode, int? maxRequests, IProgress<string> log, CancellationToken ct,
+        string? searchQuery = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -38,7 +41,8 @@ public sealed class FetchProcessService
             CreateNoWindow = true,
         };
         psi.ArgumentList.Add("main.py");
-        psi.ArgumentList.Add(username);
+        if (mode != FetchMode.Search)
+            psi.ArgumentList.Add(username);
         // 共有データフォルダにも対応するため保存先を常に明示する
         psi.ArgumentList.Add("--output-dir");
         psi.ArgumentList.Add(_settings.EffectiveDataDir);
@@ -49,6 +53,14 @@ public sealed class FetchProcessService
                 break;
             case FetchMode.Backfill:
                 psi.ArgumentList.Add("--backfill");
+                break;
+            case FetchMode.Search:
+                // username は "searches/<slug>" — main.py には slug のみ渡す
+                psi.ArgumentList.Add("--search");
+                psi.ArgumentList.Add(searchQuery
+                    ?? throw new ArgumentNullException(nameof(searchQuery)));
+                psi.ArgumentList.Add("--search-name");
+                psi.ArgumentList.Add(username["searches/".Length..]);
                 break;
         }
         if (maxRequests is { } limit)

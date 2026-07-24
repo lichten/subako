@@ -193,6 +193,66 @@ public sealed class JsonlImporterTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchBucketImportDoesNotOverwriteProfile()
+    {
+        var users = new UserRepository(_db);
+        await users.AddAsync("searches/kw-12345678");
+        WriteJsonl("searches/kw-12345678",
+            """{"id":"1","full_text":"hit","user":{"username":"someone","display_name":"Someone Else","profile_image_url":"https://pbs.twimg.com/profile_images/9/x_normal.jpg"}}""");
+
+        var importer = new JsonlImporter(_db);
+        var result = await importer.ImportUserAsync("searches/kw-12345678");
+        Assert.Equal(1, result.NewTweets);
+
+        // バケットの表示名は他人の user オブジェクトで上書きされない
+        using var conn = _db.OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT display_name FROM users WHERE username = 'searches/kw-12345678'";
+        Assert.Equal(DBNull.Value, cmd.ExecuteScalar());
+
+        // author 列には実投稿者が入る
+        var tweets = new TweetRepository(_db);
+        var page = await tweets.GetPageAsync("searches/kw-12345678", false, null, 10);
+        Assert.Equal("someone", page.Rows.Single().AuthorUsername);
+        Assert.Equal("Someone Else", page.Rows.Single().AuthorDisplayName);
+    }
+
+    [Fact]
+    public async Task SameTweetImportsIntoArchiveAndSearchBucket()
+    {
+        var users = new UserRepository(_db);
+        await users.AddAsync("alice");
+        await users.AddAsync("searches/kw-12345678");
+        var line = TweetLine(1);
+        WriteJsonl("alice", line);
+        WriteJsonl("searches/kw-12345678", line);
+
+        var importer = new JsonlImporter(_db);
+        Assert.Equal(1, (await importer.ImportUserAsync("alice")).NewTweets);
+        Assert.Equal(1, (await importer.ImportUserAsync("searches/kw-12345678")).NewTweets);
+        Assert.Equal(1, CountTweets("alice"));
+        Assert.Equal(1, CountTweets("searches/kw-12345678"));
+
+        // バケット削除ではアーカイブ側の行は残る
+        await users.DeleteBucketAsync("searches/kw-12345678");
+        Assert.Equal(0, CountTweets("searches/kw-12345678"));
+        Assert.Equal(1, CountTweets("alice"));
+    }
+
+    [Fact]
+    public async Task GetAllAsyncExcludesSearchBuckets()
+    {
+        var users = new UserRepository(_db);
+        await users.AddAsync("alice");
+        await users.AddAsync("searches/kw-12345678");
+
+        Assert.Equal(new[] { "alice" },
+            (await users.GetAllAsync()).Select(u => u.Username));
+        Assert.Equal(new[] { "searches/kw-12345678" },
+            (await users.GetSearchBucketsAsync()).Select(u => u.Username));
+    }
+
+    [Fact]
     public async Task ByteOffsetsSurviveMultibyteText()
     {
         var users = new UserRepository(_db);

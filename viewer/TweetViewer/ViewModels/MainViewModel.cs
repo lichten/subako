@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -40,6 +41,13 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RebuildCommand))]
     private UserItemViewModel? _selectedUser;
 
+    /// <summary>保存済み検索 (サイドバー「検索」セクション)。</summary>
+    public ObservableCollection<SearchItemViewModel> Searches { get; } = new();
+
+    /// <summary>選択中の検索バケット (SelectedUser と相互排他)。</summary>
+    [ObservableProperty]
+    private SearchItemViewModel? _selectedSearch;
+
     [ObservableProperty]
     private bool _unreadOnly;
 
@@ -71,27 +79,33 @@ public sealed partial class MainViewModel : ObservableObject
         UsersView.Filter = FilterUser;
     }
 
-    /// <summary>起動時: data/ 直下の既存アーカイブを登録 → 全ユーザー差分取込 → 一覧表示。</summary>
+    /// <summary>起動時: data/ 直下の既存アーカイブと検索バケットを登録 → 差分取込 → 一覧表示。</summary>
     public async Task InitializeAsync()
     {
         StatusText = "既存データを確認しています…";
         await _users.RegisterExistingDataDirsAsync();
+        await _users.RegisterExistingSearchDirsAsync();
         await RefreshUsersAsync();
         await RefreshTagsAsync();
+        await RefreshSearchesAsync();
 
-        foreach (var user in Users.ToList())
+        var targets = Users.Select(u => u.Username)
+            .Concat(Searches.Select(s => s.Username))
+            .ToList();
+        foreach (var username in targets)
         {
             var progress = new Progress<ImportProgress>(p =>
-                StatusText = $"{user.Username} を取込中… {p.BytesDone * 100 / Math.Max(1, p.BytesTotal)}% ({p.Imported:N0}件)");
-            var result = await _importer.ImportUserAsync(user.Username, progress);
+                StatusText = $"{username} を取込中… {p.BytesDone * 100 / Math.Max(1, p.BytesTotal)}% ({p.Imported:N0}件)");
+            var result = await _importer.ImportUserAsync(username, progress);
             if (result.NewTweets > 0 || result.SkippedLines > 0)
-                StatusText = $"{user.Username}: 新規 {result.NewTweets:N0}件を取込" +
+                StatusText = $"{username}: 新規 {result.NewTweets:N0}件を取込" +
                              (result.SkippedLines > 0 ? $" (壊れ行 {result.SkippedLines} をスキップ)" : "");
         }
         await RefreshUsersAsync();
+        await RefreshSearchesAsync();
         StatusText = "準備完了";
 
-        if (SelectedUser is null && Users.Count > 0)
+        if (SelectedUser is null && SelectedSearch is null && Users.Count > 0)
             SelectedUser = Users[0];
     }
 
@@ -208,25 +222,64 @@ public sealed partial class MainViewModel : ObservableObject
         await RefreshTagsAsync();
     }
 
-    partial void OnSelectedUserChanged(UserItemViewModel? value) => _ = ResetListAsync();
+    /// <summary>相互排他の連鎖 null 代入で二重リセットしないためのフラグ。</summary>
+    private bool _switchingSelection;
+
+    partial void OnSelectedUserChanged(UserItemViewModel? value)
+    {
+        // ユーザーと検索は相互排他 (null 代入の連鎖ループを避けるため非 null 遷移時のみ相手を消す)
+        if (value is not null && SelectedSearch is not null)
+        {
+            _switchingSelection = true;
+            SelectedSearch = null;
+            _switchingSelection = false;
+        }
+        if (!_switchingSelection)
+            _ = ResetListAsync();
+    }
+
+    partial void OnSelectedSearchChanged(SearchItemViewModel? value)
+    {
+        if (value is not null && SelectedUser is not null)
+        {
+            _switchingSelection = true;
+            SelectedUser = null;
+            _switchingSelection = false;
+        }
+        if (!_switchingSelection)
+            _ = ResetListAsync();
+    }
 
     partial void OnUnreadOnlyChanged(bool value) => _ = ResetListAsync();
 
     partial void OnIsMediaViewChanged(bool value) => _ = ResetListAsync();
 
-    private Task ResetListAsync() =>
-        IsMediaView
+    private Task ResetListAsync()
+    {
+        if (SelectedSearch is { } search)
+            return IsMediaView
+                ? MediaGrid.ResetAsync(search.Username)
+                : TweetList.ResetAsync(search.Username, search.Query, null, UnreadOnly);
+        return IsMediaView
             ? MediaGrid.ResetAsync(SelectedUser?.Username)
             : TweetList.ResetAsync(
                 SelectedUser?.Username, SelectedUser?.DisplayName ?? "",
                 SelectedUser?.IconUrl, UnreadOnly);
+    }
 
     private void OnUnreadDelta(string username, long delta)
     {
         var user = Users.FirstOrDefault(
             u => string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase));
         if (user is not null)
+        {
             user.UnreadCount = Math.Max(0, user.UnreadCount + delta);
+            return;
+        }
+        var search = Searches.FirstOrDefault(
+            s => string.Equals(s.Username, username, StringComparison.OrdinalIgnoreCase));
+        if (search is not null)
+            search.UnreadCount = Math.Max(0, search.UnreadCount + delta);
     }
 
     /// <summary>ユーザー追加(AddUserDialog から)。登録後に一覧を更新して選択。</summary>
@@ -247,7 +300,7 @@ public sealed partial class MainViewModel : ObservableObject
         return added;
     }
 
-    /// <summary>取得完了後の差分取込+画面反映(UpdateLogWindow から)。</summary>
+    /// <summary>取得完了後の差分取込+画面反映(UpdateLogWindow から)。username はバケット ID の場合もある。</summary>
     public async Task OnFetchCompletedAsync(string username)
     {
         var progress = new Progress<ImportProgress>(p =>
@@ -255,8 +308,73 @@ public sealed partial class MainViewModel : ObservableObject
         var result = await _importer.ImportUserAsync(username, progress);
         StatusText = $"{username}: 新規 {result.NewTweets:N0}件を取込";
         await RefreshUsersAsync();
-        if (string.Equals(SelectedUser?.Username, username, StringComparison.OrdinalIgnoreCase))
+        await RefreshSearchesAsync();
+        if (string.Equals(SelectedUser?.Username, username, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(SelectedSearch?.Username, username, StringComparison.OrdinalIgnoreCase))
             await ResetListAsync();
+    }
+
+    /// <summary>検索バケット一覧を再読込 (search.json のクエリをラベルに使う)。</summary>
+    public async Task RefreshSearchesAsync()
+    {
+        var rows = await _users.GetSearchBucketsAsync();
+        var byId = Searches.ToDictionary(s => s.Username, StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows)
+        {
+            var query = SearchMetadata.TryRead(_db.UserDir(row.Username))?.Query
+                        ?? row.Username["searches/".Length..];
+            if (byId.Remove(row.Username, out var existing))
+                existing.ApplyCounts(row, query);
+            else
+                Searches.Add(new SearchItemViewModel(row, query));
+        }
+        foreach (var removed in byId.Values)
+        {
+            Searches.Remove(removed);
+            if (SelectedSearch == removed)
+                SelectedSearch = null;
+        }
+    }
+
+    /// <summary>
+    /// 新規 API 検索の準備 (SearchDialog から)。RT数・いいね数の下限はサーバー側で
+    /// 絞るため min_retweets: / min_faves: 演算子としてクエリに付与する。
+    /// OR の結合順が壊れないよう元クエリを (...) で括る。
+    /// </summary>
+    public async Task<(string BucketId, string FinalQuery)> StartApiSearchAsync(
+        string query, long? minRetweets, long? minFaves)
+    {
+        var finalQuery = query.Trim();
+        if (minRetweets is not null || minFaves is not null)
+        {
+            finalQuery = $"({finalQuery})"
+                + (minRetweets is { } r ? $" min_retweets:{r}" : "")
+                + (minFaves is { } f ? $" min_faves:{f}" : "");
+        }
+        var bucketId = "searches/" + SearchSlug.From(finalQuery);
+        await _users.AddAsync(bucketId);
+        await RefreshSearchesAsync();
+        return (bucketId, finalQuery);
+    }
+
+    /// <summary>検索バケットの削除 (DB + フォルダ)。</summary>
+    public async Task DeleteSearchAsync(SearchItemViewModel item)
+    {
+        if (SelectedSearch == item)
+            SelectedSearch = null;
+        await _users.DeleteBucketAsync(item.Username);
+        try
+        {
+            var dir = _db.UserDir(item.Username);
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+        catch (IOException ex)
+        {
+            StatusText = $"フォルダの削除に失敗しました: {ex.Message}";
+        }
+        await RefreshSearchesAsync();
+        StatusText = $"検索「{item.Query}」を削除しました";
     }
 
     private bool CanRebuild() => SelectedUser is not null && !IsFetching;

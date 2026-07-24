@@ -35,6 +35,53 @@
                           SelectedItem="{Binding SelectedTagFilter}"
                           DisplayMemberPath="Name" />
             </DockPanel>
+            <!-- 検索セクション (保存済み API 検索) -->
+            <DockPanel DockPanel.Dock="Bottom" MaxHeight="220">
+                <DockPanel DockPanel.Dock="Top" Margin="8,4">
+                    <Button DockPanel.Dock="Right" Content="＋" Width="28" Height="28"
+                            ToolTip="X 全体をキーワード検索して保存" Click="AddSearch_Click" />
+                    <TextBlock Text="検索" FontWeight="Bold" VerticalAlignment="Center" />
+                </DockPanel>
+                <ListBox ItemsSource="{Binding Searches}"
+                         SelectedItem="{Binding SelectedSearch}"
+                         BorderThickness="0" Background="Transparent"
+                         HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:SearchItemViewModel}">
+                            <Grid Margin="4,4" Background="Transparent">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="差分更新..." Click="MenuSearchUpdate_Click" />
+                                        <MenuItem Header="削除..." Click="MenuSearchDelete_Click" />
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="🔍" Margin="0,0,6,0"
+                                           VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1">
+                                    <emoji:TextBlock Text="{Binding Query}" FontWeight="SemiBold"
+                                                     FontSize="12" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock FontSize="11" Foreground="#666"
+                                               Text="{Binding TweetCount, StringFormat={}{0:N0}件}" />
+                                </StackPanel>
+                                <Border Grid.Column="2" Background="#1D9BF0" CornerRadius="9"
+                                        MinWidth="18" Height="18" Margin="4,0" Padding="5,0"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding HasUnread, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding UnreadCount}" Foreground="White"
+                                               FontSize="11" VerticalAlignment="Center"
+                                               HorizontalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
             <ListBox ItemsSource="{Binding UsersView}"
                      SelectedItem="{Binding SelectedUser}"
                      BorderThickness="0" Background="Transparent"

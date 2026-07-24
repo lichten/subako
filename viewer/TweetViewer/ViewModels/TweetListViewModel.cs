@@ -53,15 +53,17 @@ public sealed partial class TweetListViewModel : ObservableObject
         Items.Clear();
         HasMore = username is not null;
         if (username is not null)
-            await LoadMoreCoreAsync(version);
+            await LoadMoreCoreAsync(version, force: true);
     }
 
     [RelayCommand]
     private Task LoadMore() => LoadMoreCoreAsync(_resetVersion);
 
-    private async Task LoadMoreCoreAsync(int version)
+    private async Task LoadMoreCoreAsync(int version, bool force = false)
     {
-        if (_loading || !HasMore || _username is not { } username)
+        // force = リセット直後の初回ロード。旧リセットのロードが実行中でもスキップしない
+        // (旧ロードの結果は version ガードで破棄されるため、ここで譲ると空のままになる)
+        if ((_loading && !force) || !HasMore || _username is not { } username)
             return;
         _loading = true;
         try

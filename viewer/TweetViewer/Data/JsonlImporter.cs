@@ -59,13 +59,7 @@ public sealed class JsonlImporter
     private void ResetDerived(string username)
     {
         using var conn = _db.OpenConnection();
-        using var tx = conn.BeginTransaction();
-        Execute(conn, tx,
-            "DELETE FROM tweet_media WHERE tweet_id IN (SELECT tweet_id FROM tweets WHERE username = $u)",
-            ("$u", username));
-        Execute(conn, tx, "DELETE FROM tweets WHERE username = $u", ("$u", username));
-        Execute(conn, tx, "UPDATE users SET jsonl_offset = 0 WHERE username = $u", ("$u", username));
-        tx.Commit();
+        ResetDerivedOn(conn, username);
     }
 
     private ImportResult ImportCore(
@@ -126,8 +120,9 @@ public sealed class JsonlImporter
 
         ct.ThrowIfCancellationRequested();
 
-        // 表示名・アイコンは最新ツイートの user オブジェクトで更新(取込があった場合のみ)
-        if (imported > 0)
+        // 表示名・アイコンは最新ツイートの user オブジェクトで更新(取込があった場合のみ)。
+        // 検索バケットは投稿者がバラバラなので更新しない (表示名 = クエリのまま保つ)
+        if (imported > 0 && !username.StartsWith("searches/", StringComparison.OrdinalIgnoreCase))
             latestProfile = QueryLatestProfile(conn, username);
 
         using (var tx = conn.BeginTransaction())
@@ -192,10 +187,9 @@ public sealed class JsonlImporter
     private void ResetDerivedOn(SqliteConnection conn, string username)
     {
         using var tx = conn.BeginTransaction();
-        Execute(conn, tx,
-            "DELETE FROM tweet_media WHERE tweet_id IN (SELECT tweet_id FROM tweets WHERE username = $u)",
-            ("$u", username));
+        // tweet_media は tweet_id 単位で全バケット共有のため、行削除後に孤児になったものだけ消す
         Execute(conn, tx, "DELETE FROM tweets WHERE username = $u", ("$u", username));
+        Execute(conn, tx, "DELETE FROM tweet_media WHERE tweet_id NOT IN (SELECT tweet_id FROM tweets)");
         Execute(conn, tx, "UPDATE users SET jsonl_offset = 0 WHERE username = $u", ("$u", username));
         tx.Commit();
     }
@@ -215,14 +209,18 @@ public sealed class JsonlImporter
         cmd.Transaction = tx;
         cmd.CommandText = """
             INSERT OR IGNORE INTO tweets (
-              tweet_id, id_int, username, created_at_utc, sort_key, tweet_type,
+              tweet_id, id_int, username,
+              author_username, author_display_name, author_icon_url,
+              created_at_utc, sort_key, tweet_type,
               full_text, lang, in_reply_to_username,
               rt_username, rt_display_name, rt_text, rt_icon_url,
               quoted_username, quoted_display_name, quoted_text, quoted_icon_url,
               like_count, retweet_count, reply_count, view_count,
               media_count, raw_offset, raw_length
             ) VALUES (
-              $id, $idi, $u, $cat, $sk, $ty,
+              $id, $idi, $u,
+              $au, $ad, $ai,
+              $cat, $sk, $ty,
               $tx, $lg, $irtu,
               $rtu, $rtd, $rtt, $rti,
               $qu, $qd, $qt, $qi,
@@ -234,6 +232,9 @@ public sealed class JsonlImporter
         p.AddWithValue("$id", r.TweetId);
         p.AddWithValue("$idi", r.IdInt);
         p.AddWithValue("$u", r.Username);
+        p.AddWithValue("$au", (object?)r.AuthorUsername ?? DBNull.Value);
+        p.AddWithValue("$ad", (object?)r.AuthorDisplayName ?? DBNull.Value);
+        p.AddWithValue("$ai", (object?)r.AuthorIconUrl ?? DBNull.Value);
         p.AddWithValue("$cat", r.CreatedAtUtc);
         p.AddWithValue("$sk", r.SortKey);
         p.AddWithValue("$ty", (int)r.Type);

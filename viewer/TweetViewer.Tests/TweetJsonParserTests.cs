@@ -51,6 +51,28 @@ public class TweetJsonParserTests
     }
 
     [Fact]
+    public void AuthorFields_FilledFromUserObject()
+    {
+        var parsed = ParseOk("""
+            {"id":"1","full_text":"hello",
+             "user":{"username":"alice","display_name":"Alice",
+               "profile_image_url":"https://pbs.twimg.com/profile_images/1/a_normal.jpg"}}
+            """.ReplaceLineEndings(""));
+        Assert.Equal("alice", parsed.Row.AuthorUsername);
+        Assert.Equal("Alice", parsed.Row.AuthorDisplayName);
+        Assert.Equal("https://pbs.twimg.com/profile_images/1/a_normal.jpg", parsed.Row.AuthorIconUrl);
+    }
+
+    [Fact]
+    public void AuthorFields_NullWhenUserMissing()
+    {
+        var parsed = ParseOk("""{"id":"1","full_text":"hello"}""");
+        Assert.Null(parsed.Row.AuthorUsername);
+        Assert.Null(parsed.Row.AuthorDisplayName);
+        Assert.Null(parsed.Row.AuthorIconUrl);
+    }
+
+    [Fact]
     public void Reply()
     {
         var parsed = ParseOk("""

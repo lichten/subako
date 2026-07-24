@@ -101,16 +101,49 @@ public partial class MainWindow : Window
             StartFetch(user.Username, FetchMode.Backfill, dialog.MaxRequests);
     }
 
-    private void StartFetch(string username, FetchMode mode, int? maxRequests)
+    private void StartFetch(string username, FetchMode mode, int? maxRequests, string? searchQuery = null)
     {
         if (Vm.IsFetching)
             return;
         Vm.IsFetching = true;
         var dialogVm = new FetchDialogViewModel(
-            Vm.FetchService, username, Vm.OnFetchCompletedAsync, mode, maxRequests);
+            Vm.FetchService, username, Vm.OnFetchCompletedAsync, mode, maxRequests, searchQuery);
         var window = new UpdateLogWindow { Owner = this, DataContext = dialogVm };
         window.Show();
         _ = RunFetchAsync(dialogVm);
+    }
+
+    private async void AddSearch_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm.IsFetching)
+            return;
+        var dialog = new SearchDialog { Owner = this };
+        if (dialog.ShowDialog() != true)
+            return;
+        var (bucketId, finalQuery) = await Vm.StartApiSearchAsync(
+            dialog.Query, dialog.MinRetweets, dialog.MinFaves);
+        StartFetch(bucketId, FetchMode.Search, dialog.MaxRequests, finalQuery);
+    }
+
+    private void MenuSearchUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: SearchItemViewModel item } || Vm.IsFetching)
+            return;
+        // リクエスト上限は差分更新でも必須 (BackfillDialog を上限入力に再利用)
+        var dialog = new BackfillDialog { Owner = this, Title = "検索を差分更新" };
+        if (dialog.ShowDialog() == true)
+            StartFetch(item.Username, FetchMode.Search, dialog.MaxRequests, item.Query);
+    }
+
+    private async void MenuSearchDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: SearchItemViewModel item })
+            return;
+        var result = MessageBox.Show(
+            $"検索「{item.Query}」を削除しますか?\n保存済みの {item.TweetCount:N0}件と画像も削除されます。",
+            "TweetViewer", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result == MessageBoxResult.Yes)
+            await Vm.DeleteSearchAsync(item);
     }
 
     private void MediaCell_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)

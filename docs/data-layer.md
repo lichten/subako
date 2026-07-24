@@ -10,11 +10,46 @@ Windows 版ビューア(`viewer/TweetViewer`)・Python fetcher・将来の Mac /
 data/
 ├── viewer.db                 # SQLite (このドキュメントの §4)
 ├── icons/                    # ユーザーアイコンキャッシュ (§3.5)
-└── <username>/               # X のスクリーン名 (@ なし)
-    ├── tweets.jsonl          # 生ツイートアーカイブ (正データ、§2)
+├── <username>/               # X のスクリーン名 (@ なし)
+│   ├── tweets.jsonl          # 生ツイートアーカイブ (正データ、§2)
+│   ├── state.json            # fetcher 私有 (§6)
+│   └── images/               # 画像 (§3)
+└── searches/<slug>/          # キーワード検索バケット (§1.5)
+    ├── tweets.jsonl          # 検索結果 (正データ、§2 と同契約)
+    ├── search.json           # クエリ原文メタデータ (§1.5)
     ├── state.json            # fetcher 私有 (§6)
     └── images/               # 画像 (§3)
 ```
+
+### 1.5 キーワード検索バケット (`data/searches/<slug>/`)
+
+`/search-tweets` による任意クエリの検索結果を保存する。取得は
+`python main.py --search "<query>" [--search-name <slug>] [--max-requests N]`。
+
+- **slug 生成規則** (Python `sorsa_fetcher.fetcher.slugify_query` と
+  C# `TweetViewer.Data.SearchSlug.From` で同一に保つこと):
+  不正文字と空白の連続 (`\ / : * ? " < > | \s`) を `_` に置換 → 前後の `_` を除去 →
+  40 字に切詰め (空なら `search`) → `-` + クエリ原文 UTF-8 の SHA1 先頭 8 hex。
+- **search.json**: `{"query": "<クエリ原文>", "created_at": "<ISO 8601>"}`。
+  書き手は fetcher (初回作成のみ)、ビューアは読み取りのみ。壊れている場合の
+  表示ラベルはフォルダ名でフォールバック。
+- **検索クエリ構文**: X 標準の検索演算子を素通しする。
+  | 構文 | 意味 |
+  |---|---|
+  | `語1 語2` (スペース区切り) | AND |
+  | `語1 OR 語2` (OR は大文字) | OR |
+  | `"slay the spire 2"` | フレーズ完全一致 |
+  | `(...)` | グループ化 (OR と AND の併用時に必須) |
+  | `-語` | 除外 |
+  | `lang:ja` | 言語フィルタ |
+  | `min_faves:N` / `min_retweets:N` | いいね数 / RT数の下限 (サーバー側フィルタ) |
+  | `from:user` / `since:YYYY-MM-DD` / `until:YYYY-MM-DD` | 投稿者・期間 |
+
+  例: `(sts2 OR "slay the spire 2" OR スレスパ2) lang:ja min_faves:10`
+- 初回取得は `state.json` の `search_cursor` / `search_done` で中断再開、
+  2回目以降 (`search_done` 後) は新しい順に辿り非空ページ全件既知で停止する差分取得。
+- ビューアはバケットを `users.username = "searches/<slug>"` の仮想行として登録し、
+  ユーザー一覧とは別の「検索」セクションに表示する (§4.2 注記)。
 
 ## 2. tweets.jsonl の契約
 
@@ -74,11 +109,16 @@ data/
 | `tags`, `user_tags` | **正データ** | ユーザーへの独自タグ。JSONL から再構築不能。破棄禁止 |
 | `schema_meta` | メタ | `schema_version` を格納 |
 
+`tweet_media` は `tweet_id` 単位で全バケット共有 (複合 PK 化後も tweet_id キーのまま)。
+特定 username の派生リセットやバケット削除では、`tweets` の行削除後に
+**どこからも参照されなくなった孤児行のみ** 削除すること
+(`DELETE FROM tweet_media WHERE tweet_id NOT IN (SELECT tweet_id FROM tweets)`)。
+
 `read_state` は `tweets` への FK を持たない。rebuild で `tweets` を
 DELETE しても既読状態は残る。孤児行(対応ツイートが無い read_state)は
 無害であり、**削除してはならない**。
 
-### 4.2 DDL(schema_version = 4)
+### 4.2 DDL(schema_version = 5)
 
 ```sql
 CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -93,9 +133,12 @@ CREATE TABLE users (
 );
 
 CREATE TABLE tweets (
-  tweet_id             TEXT PRIMARY KEY,   -- §2 の正準 ID
+  tweet_id             TEXT NOT NULL,      -- §2 の正準 ID
   id_int               INTEGER NOT NULL,   -- ID の数値表現 (ソートのタイブレーク)
-  username             TEXT NOT NULL,      -- アーカイブ所有ユーザー (= users.username)
+  username             TEXT NOT NULL,      -- アーカイブ所有ユーザーまたはバケット ID (searches/<slug>)
+  author_username      TEXT,               -- 実投稿者 (JSONL の user 由来。バケット表示に使う)
+  author_display_name  TEXT,
+  author_icon_url      TEXT,
   created_at_utc       TEXT NOT NULL,      -- ISO 8601 UTC ("" = パース不能)
   sort_key             INTEGER NOT NULL,   -- epoch 秒 (0 = パース不能 → 最古側)
   tweet_type           INTEGER NOT NULL,   -- 0=tweet 1=RT 2=reply 3=quote (§2 の判定)
@@ -112,7 +155,8 @@ CREATE TABLE tweets (
   view_count           INTEGER NOT NULL DEFAULT 0,
   media_count          INTEGER NOT NULL DEFAULT 0,
   raw_offset           INTEGER NOT NULL,   -- tweets.jsonl 内の行先頭バイト位置
-  raw_length           INTEGER NOT NULL    -- 改行を含まない行バイト長
+  raw_length           INTEGER NOT NULL,   -- 改行を含まない行バイト長
+  PRIMARY KEY (username, tweet_id)         -- 同一ツイートがアーカイブとバケット双方に存在し得る
 ) WITHOUT ROWID;
 CREATE INDEX ix_tweets_user_sort ON tweets(username, sort_key DESC, id_int DESC);
 
@@ -159,6 +203,13 @@ CREATE INDEX ix_user_tags_tag ON user_tags(tag_id);
   v3 → v4 の差分: `tags` / `user_tags` テーブルの追加のみ。**派生データの
   リセット・再取込は不要**(テーブル追加だけのバージョンアップでは
   リセットしないこと)。
+  v4 → v5 の差分: `tweets` に author 3列追加 + 主キーを `(username, tweet_id)` に
+  変更(PK 変更のため `tweets` は DROP → CREATE)。派生リセット + `jsonl_offset = 0`。
+  正データ保全は従来どおり。
+- **検索バケットの users 行**: `username = "searches/<slug>"`。ビューアの
+  ユーザー一覧からは `username NOT LIKE 'searches/%'` で除外し「検索」
+  セクションに表示する。バケット行の `display_name` / `icon_url` は更新しない
+  (§5 参照。表示ラベルは search.json の query)。
 
 ## 5. 取込(JSONL → SQLite)の契約
 
@@ -172,6 +223,9 @@ CREATE INDEX ix_user_tags_tag ON user_tags(tag_id);
    そのユーザーの `tweets` / `tweet_media` を DELETE・offset=0 で全再取込
    (rebuild)。`read_state` は不触。
 5. 手動 rebuild も同じ手順。**`read_state` と `users` は決して消さない**。
+6. 取込後の `users.display_name` / `icon_url` の更新 (最新ツイートの user
+   オブジェクト由来) は、**検索バケット (`searches/`) では行わない**
+   (投稿者がバラバラのため。ラベルは search.json の query を使う)。
 
 ## 6. 並行性・その他
 

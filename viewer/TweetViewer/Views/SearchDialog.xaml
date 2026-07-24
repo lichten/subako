@@ -1,0 +1,57 @@
+<Window x:Class="TweetViewer.Views.SearchDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="X をキーワード検索" Height="420" Width="520"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        WindowStyle="ToolWindow">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="検索クエリ:" />
+        <TextBox x:Name="QueryBox" Grid.Row="1" Margin="0,6,0,0" FontSize="14"
+                 VerticalContentAlignment="Center" />
+
+        <TextBlock Grid.Row="2" TextWrapping="Wrap" Foreground="#666" FontSize="12"
+                   Margin="0,6,0,0">
+            X 標準の検索演算子が使えます — スペース区切り = AND / OR (大文字) /
+            "フレーズ完全一致" / (グループ化) / -除外 / lang:ja / from:user /
+            since:2024-01-01 until:2024-12-31<LineBreak />
+            例: (sts2 OR "slay the spire 2" OR スレスパ2) lang:ja
+        </TextBlock>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="RT数 ≥" VerticalAlignment="Center" />
+            <TextBox x:Name="MinRetweetsBox" Width="70" Margin="6,0,0,0" FontSize="14"
+                     VerticalContentAlignment="Center" />
+            <TextBlock Text="いいね数 ≥" VerticalAlignment="Center" Margin="16,0,0,0" />
+            <TextBox x:Name="MinFavesBox" Width="70" Margin="6,0,0,0" FontSize="14"
+                     VerticalContentAlignment="Center" />
+            <TextBlock Text="(空欄 = 制限なし)" VerticalAlignment="Center" Margin="12,0,0,0"
+                       Foreground="#666" FontSize="12" />
+            <TextBlock Text="最大リクエスト数:" VerticalAlignment="Center" Margin="16,0,0,0" />
+            <TextBox x:Name="MaxRequestsBox" Width="70" Margin="6,0,0,0" FontSize="14"
+                     Text="50" VerticalContentAlignment="Center" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="4" TextWrapping="Wrap" Foreground="#666" FontSize="12"
+                   Margin="0,10,0,0">
+            RT数・いいね数の下限は min_retweets: / min_faves: としてクエリに含め、
+            サーバー側で絞り込みます (不要なツイートの取得にリクエストを使いません)。<LineBreak />
+            1リクエスト ≈ 20件。Starter プランは月 10,100 リクエストです。
+            上限に達した場合は安全に中断され、「差分更新」で続きから再開できます。
+        </TextBlock>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom">
+            <Button Content="検索開始" Width="90" IsDefault="True" Click="Ok_Click" />
+            <Button Content="キャンセル" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

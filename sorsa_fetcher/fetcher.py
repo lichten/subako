@@ -5,10 +5,23 @@
 /search-tweets を期間分割でページングする backfill を提供する。
 """
 
+import hashlib
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
+
+
+def slugify_query(query):
+    """検索クエリ → ファイルシステム安全なバケット名。
+
+    C# 側 (viewer/TweetViewer/Data/SearchSlug.cs) と同一規則を保つこと:
+    不正文字と空白の連続を "_" に置換 → 前後の "_" を除去 → 40字に切詰め →
+    "-" + クエリ原文 UTF-8 の SHA1 先頭8hex。
+    """
+    base = re.sub(r'[\\/:*?"<>|\s]+', "_", query).strip("_")[:40] or "search"
+    return f"{base}-{hashlib.sha1(query.encode('utf-8')).hexdigest()[:8]}"
 
 # 1ウィンドウでこの件数以上取れて終端した場合は検索キャップを疑い分割する
 _WINDOW_SUSPECT_COUNT = 400
@@ -144,6 +157,98 @@ class TweetFetcher:
             cursor = resp.get("next_cursor")
             logger.info(
                 "[update] page=%d 取得=%d 新規=%d 累計新規=%d",
+                page, len(tweets), len(new_tweets), self.total_new,
+            )
+            if tweets and not new_tweets:
+                logger.info("既知ツイートのみのページに到達したため差分取得を終了します")
+                break
+            if not cursor:
+                logger.info("終端に到達しました (next_cursor なし)")
+                break
+            if not tweets:
+                empty_streak += 1
+                if empty_streak >= _MAX_CONSECUTIVE_EMPTY_PAGES:
+                    logger.warning(
+                        "cursor 付き空ページが %d 回連続したため終了します",
+                        _MAX_CONSECUTIVE_EMPTY_PAGES,
+                    )
+                    break
+            else:
+                empty_streak = 0
+
+    # ---- キーワード検索 (検索バケット data/searches/<slug>/) ----
+
+    def fetch_search(self, query):
+        """任意クエリの検索取得。初回は cursor 保存つき全ページング、以降は差分。
+
+        X 標準の検索演算子 (スペース=AND / OR / "フレーズ" / (グループ) /
+        -除外 / lang: / min_faves: / min_retweets: / since: / until: など) を
+        そのままクエリに書ける (Sorsa はクエリを素通しする)。
+        """
+        state = self.storage.load_state()
+        state["query"] = query
+        self.storage.save_state(state)
+        if state.get("search_done"):
+            self._search_update(query)
+        else:
+            self._search_initial(query, state)
+
+    def _search_initial(self, query, state):
+        """fetch_timeline と同構造: cursor を毎ページ保存し中断再開に耐える。"""
+        cursor = state.get("search_cursor")
+        page = 0
+        empty_streak = 0
+        while True:
+            if self.max_pages is not None and page >= self.max_pages:
+                logger.info("--max-pages 上限 (%d) に達したので中断します", self.max_pages)
+                break
+            self._check_budget()
+            resp = self.client.search_tweets(query, cursor=cursor)
+            tweets = resp.get("tweets") or []
+            page += 1
+            self._handle_page(tweets)
+            cursor = resp.get("next_cursor")
+            logger.info(
+                "[search] page=%d 取得=%d 累計新規=%d 保存済み=%d",
+                page, len(tweets), self.total_new, len(self.storage.seen_ids),
+            )
+            state["search_cursor"] = cursor
+            self.storage.save_state(state)
+            if not cursor:
+                state["search_done"] = True
+                self.storage.save_state(state)
+                logger.info("検索結果の終端に到達しました (next_cursor なし)")
+                break
+            if not tweets:
+                empty_streak += 1
+                if empty_streak >= _MAX_CONSECUTIVE_EMPTY_PAGES:
+                    state["search_done"] = True
+                    self.storage.save_state(state)
+                    logger.warning(
+                        "cursor 付き空ページが %d 回連続したため終端とみなします",
+                        _MAX_CONSECUTIVE_EMPTY_PAGES,
+                    )
+                    break
+            else:
+                empty_streak = 0
+
+    def _search_update(self, query):
+        """fetch_timeline_update と同構造: 新しい順に辿り、非空ページ全件既知で停止。"""
+        cursor = None
+        page = 0
+        empty_streak = 0
+        while True:
+            if self.max_pages is not None and page >= self.max_pages:
+                logger.info("--max-pages 上限 (%d) に達したので中断します", self.max_pages)
+                break
+            self._check_budget()
+            resp = self.client.search_tweets(query, cursor=cursor)
+            tweets = resp.get("tweets") or []
+            page += 1
+            new_tweets = self._handle_page(tweets)
+            cursor = resp.get("next_cursor")
+            logger.info(
+                "[search-update] page=%d 取得=%d 新規=%d 累計新規=%d",
                 page, len(tweets), len(new_tweets), self.total_new,
             )
             if tweets and not new_tweets:

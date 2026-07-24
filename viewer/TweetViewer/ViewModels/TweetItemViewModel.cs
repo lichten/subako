@@ -36,7 +36,7 @@ public sealed partial class TweetItemViewModel : ObservableObject
         OwnerDisplayName = ownerDisplayName;
         ImagePaths = ResolveImagePaths(media, imagesDir);
 
-        var mainUrl = (IsRetweet ? Row.RtIconUrl : null) ?? ownerIconUrl;
+        var mainUrl = (IsRetweet ? Row.RtIconUrl : null) ?? Row.AuthorIconUrl ?? ownerIconUrl;
         ResolveIcon(iconCache, mainUrl, path => MainIconPath = path);
         if (IsQuote)
             ResolveIcon(iconCache, Row.QuotedIconUrl, path => QuotedIconPath = path);
@@ -66,17 +66,20 @@ public sealed partial class TweetItemViewModel : ObservableObject
     public bool IsQuote => Row.Type == TweetType.Quote;
     public bool HasImages => ImagePaths.Count > 0;
 
-    /// <summary>ヘッダ太字の表示名。RT は RT元作者、それ以外はアーカイブユーザー。</summary>
-    public string HeaderDisplayName => IsRetweet
-        ? (string.IsNullOrEmpty(Row.RtDisplayName) ? Row.RtUsername ?? OwnerDisplayName : Row.RtDisplayName!)
-        : OwnerDisplayName;
+    /// <summary>行の実投稿者名。検索バケットでは行ごとに異なる (author 列がない旧データは owner)。</summary>
+    private string AuthorName => Row.AuthorDisplayName ?? Row.AuthorUsername ?? OwnerDisplayName;
 
-    /// <summary>ヘッダの @ユーザー名。RT は RT元作者。</summary>
+    /// <summary>ヘッダ太字の表示名。RT は RT元作者、それ以外は実投稿者。</summary>
+    public string HeaderDisplayName => IsRetweet
+        ? (string.IsNullOrEmpty(Row.RtDisplayName) ? Row.RtUsername ?? AuthorName : Row.RtDisplayName!)
+        : AuthorName;
+
+    /// <summary>ヘッダの @ユーザー名。RT は RT元作者、それ以外は実投稿者。</summary>
     public string HeaderUsername => IsRetweet && !string.IsNullOrEmpty(Row.RtUsername)
         ? Row.RtUsername!
-        : Row.Username;
+        : Row.AuthorUsername ?? Row.Username;
 
-    public string RtHeader => IsRetweet ? $"{OwnerDisplayName} さんがリツイート" : "";
+    public string RtHeader => IsRetweet ? $"{AuthorName} さんがリツイート" : "";
     public string RtText => Row.RtText ?? "";
     public string ReplyHeader => IsReply ? $"@{Row.InReplyToUsername} への返信" : "";
     public string QuotedHeader => IsQuote
@@ -108,9 +111,15 @@ public sealed partial class TweetItemViewModel : ObservableObject
     private Task ToggleRead() => _owner.ToggleReadAsync(this);
 
     [RelayCommand]
-    private void OpenInBrowser() =>
-        // RT/引用でも X 側が id で正規ツイートへリダイレクトする
-        Browser.OpenUrl($"https://x.com/{Row.Username}/status/{Row.TweetId}");
+    private void OpenInBrowser()
+    {
+        // RT/引用でも X 側が id で正規ツイートへリダイレクトする。
+        // 検索バケット (Username = searches/<slug>) では投稿者不明時に id 直リンク形式を使う
+        var user = Row.AuthorUsername ?? Row.Username;
+        Browser.OpenUrl(user.Contains('/')
+            ? $"https://x.com/i/web/status/{Row.TweetId}"
+            : $"https://x.com/{user}/status/{Row.TweetId}");
+    }
 
     /// <summary>既読化(スクロール検知から)。二重呼び出しは owner 側で無視。</summary>
     public void MarkReadFromScroll() => _owner.MarkSeen(this);

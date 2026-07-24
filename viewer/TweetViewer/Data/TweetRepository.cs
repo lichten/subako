@@ -32,6 +32,7 @@ public sealed class TweetRepository
                        t.like_count, t.retweet_count, t.reply_count, t.view_count,
                        t.media_count, t.raw_offset, t.raw_length,
                        t.rt_icon_url, t.quoted_icon_url,
+                       t.author_username, t.author_display_name, t.author_icon_url,
                        (r.tweet_id IS NOT NULL) AS is_read
                 FROM tweets t
                 LEFT JOIN read_state r ON r.tweet_id = t.tweet_id
@@ -81,7 +82,10 @@ public sealed class TweetRepository
                         RawLength = reader.GetInt64(21),
                         RtIconUrl = reader.IsDBNull(22) ? null : reader.GetString(22),
                         QuotedIconUrl = reader.IsDBNull(23) ? null : reader.GetString(23),
-                        IsRead = reader.GetInt64(24) != 0,
+                        AuthorUsername = reader.IsDBNull(24) ? null : reader.GetString(24),
+                        AuthorDisplayName = reader.IsDBNull(25) ? null : reader.GetString(25),
+                        AuthorIconUrl = reader.IsDBNull(26) ? null : reader.GetString(26),
+                        IsRead = reader.GetInt64(27) != 0,
                     });
                 }
             }

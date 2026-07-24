@@ -107,38 +107,57 @@ public sealed class SchemaMigrationTests : IDisposable
         // v4 で追加されたタグテーブルが存在する (SELECT が例外にならない)
         Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM tags"));
         Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM user_tags"));
+        // v5 の author 列が存在する
+        Assert.Equal(0L, Scalar("SELECT COUNT(author_username) FROM tweets"));
+    }
+
+    /// <summary>v4 スキーマ相当 (tweets は tweet_id 単独 PK・author 列なし) の DB を作る。</summary>
+    private void CreateV4Database()
+    {
+        var setup = new ViewerDatabase(_dataDir);
+        setup.EnsureCreated();
+        using var conn = setup.OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            DROP TABLE tweets;
+            CREATE TABLE tweets (
+              tweet_id TEXT PRIMARY KEY, id_int INTEGER NOT NULL, username TEXT NOT NULL,
+              created_at_utc TEXT NOT NULL, sort_key INTEGER NOT NULL, tweet_type INTEGER NOT NULL,
+              full_text TEXT NOT NULL, lang TEXT, in_reply_to_username TEXT,
+              rt_username TEXT, rt_display_name TEXT, rt_text TEXT, rt_icon_url TEXT,
+              quoted_username TEXT, quoted_display_name TEXT, quoted_text TEXT, quoted_icon_url TEXT,
+              like_count INTEGER NOT NULL DEFAULT 0, retweet_count INTEGER NOT NULL DEFAULT 0,
+              reply_count INTEGER NOT NULL DEFAULT 0, view_count INTEGER NOT NULL DEFAULT 0,
+              media_count INTEGER NOT NULL DEFAULT 0,
+              raw_offset INTEGER NOT NULL, raw_length INTEGER NOT NULL
+            ) WITHOUT ROWID;
+            UPDATE schema_meta SET value = '4' WHERE key = 'schema_version';
+            INSERT INTO users (username, display_name, added_at, jsonl_offset)
+              VALUES ('alice', 'Alice', '2026-01-01T00:00:00Z', 12345);
+            INSERT INTO tweets (tweet_id, id_int, username, created_at_utc, sort_key,
+                                tweet_type, full_text, raw_offset, raw_length)
+              VALUES ('1', 1, 'alice', '2026-01-01T00:00:00Z', 100, 0, 'hello', 0, 10);
+            INSERT INTO tweet_media VALUES ('1', 1, 'http://x/img.jpg', 'jpg', 0);
+            INSERT INTO read_state VALUES ('1', 'alice', '2026-01-02T00:00:00Z');
+            INSERT INTO tags (name) VALUES ('絵師');
+            INSERT INTO user_tags VALUES ('alice', 1);
+            """;
+        cmd.ExecuteNonQuery();
     }
 
     [Fact]
-    public void V3DatabaseMigratesToV4WithoutResettingDerivedData()
+    public void V4DatabaseMigratesToV5ResettingDerivedDataOnly()
     {
-        // v3 相当の DB を作る: 最新 DDL で作成後、バージョンだけ '3' に戻す
-        {
-            var setup = new ViewerDatabase(_dataDir);
-            setup.EnsureCreated();
-            using var conn = setup.OpenConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                DROP TABLE tags;
-                DROP TABLE user_tags;
-                UPDATE schema_meta SET value = '3' WHERE key = 'schema_version';
-                INSERT INTO users (username, added_at, jsonl_offset)
-                  VALUES ('alice', '2026-01-01T00:00:00Z', 12345);
-                INSERT INTO tweets (tweet_id, id_int, username, created_at_utc, sort_key,
-                                    tweet_type, full_text, raw_offset, raw_length)
-                  VALUES ('1', 1, 'alice', '2026-01-01T00:00:00Z', 100, 0, 'hello', 0, 10);
-                """;
-            cmd.ExecuteNonQuery();
-        }
+        CreateV4Database();
         SqliteConnection.ClearAllPools();
 
         var db = new ViewerDatabase(_dataDir);
         db.EnsureCreated();
 
-        using var conn2 = db.OpenConnection();
+        using var conn = db.OpenConnection();
         object? Scalar(string sql)
         {
-            using var cmd = conn2.CreateCommand();
+            using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
             return cmd.ExecuteScalar();
         }
@@ -146,11 +165,39 @@ public sealed class SchemaMigrationTests : IDisposable
         Assert.Equal(
             ViewerDatabase.SchemaVersion.ToString(),
             (string)Scalar("SELECT value FROM schema_meta WHERE key='schema_version'")!);
-        // v3→v4 はテーブル追加のみ: 派生データはリセットされず全再取込も走らない
-        Assert.Equal(1L, Scalar("SELECT COUNT(*) FROM tweets"));
-        Assert.Equal(12345L, Scalar("SELECT jsonl_offset FROM users WHERE username='alice'"));
-        // タグテーブルが作られている
-        Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM tags"));
-        Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM user_tags"));
+        // 派生データはリセットされ再取込のためオフセットも 0
+        Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM tweets"));
+        Assert.Equal(0L, Scalar("SELECT COUNT(*) FROM tweet_media"));
+        Assert.Equal(0L, Scalar("SELECT jsonl_offset FROM users WHERE username='alice'"));
+        // author 列が存在する
+        Assert.Equal(0L, Scalar("SELECT COUNT(author_username) FROM tweets"));
+        // 正データ (users / read_state / tags) は保全
+        Assert.Equal("Alice", (string)Scalar("SELECT display_name FROM users WHERE username='alice'")!);
+        Assert.Equal(1L, Scalar("SELECT COUNT(*) FROM read_state"));
+        Assert.Equal(1L, Scalar("SELECT COUNT(*) FROM tags"));
+        Assert.Equal(1L, Scalar("SELECT COUNT(*) FROM user_tags"));
+    }
+
+    [Fact]
+    public void CompositePrimaryKeyAllowsSameTweetInArchiveAndSearchBucket()
+    {
+        var db = new ViewerDatabase(_dataDir);
+        db.EnsureCreated();
+
+        using var conn = db.OpenConnection();
+        using var cmd = conn.CreateCommand();
+        // 同一 tweet_id をアーカイブと検索バケットの両方に格納できる (v5 複合 PK)
+        cmd.CommandText = """
+            INSERT INTO tweets (tweet_id, id_int, username, created_at_utc, sort_key,
+                                tweet_type, full_text, raw_offset, raw_length)
+              VALUES ('1', 1, 'alice', '2026-01-01T00:00:00Z', 100, 0, 'hello', 0, 10);
+            INSERT INTO tweets (tweet_id, id_int, username, created_at_utc, sort_key,
+                                tweet_type, full_text, raw_offset, raw_length)
+              VALUES ('1', 1, 'searches/kw-12345678', '2026-01-01T00:00:00Z', 100, 0, 'hello', 0, 10);
+            """;
+        cmd.ExecuteNonQuery();
+        using var count = conn.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM tweets WHERE tweet_id = '1'";
+        Assert.Equal(2L, count.ExecuteScalar());
     }
 }

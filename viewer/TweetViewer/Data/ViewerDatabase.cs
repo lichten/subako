@@ -10,7 +10,49 @@ namespace TweetViewer.Data;
 /// </summary>
 public sealed class ViewerDatabase
 {
-    public const int SchemaVersion = 4;
+    public const int SchemaVersion = 5;
+
+    /// <summary>
+    /// tweets テーブルの DDL。EnsureCreated と v5 マイグレーション (DROP→CREATE) で共用。
+    /// username はアーカイブ所有ユーザーまたは検索バケット ID (searches/&lt;slug&gt;)、
+    /// author_* は実投稿者 (JSONL の user オブジェクト由来)。
+    /// 同一ツイートがアーカイブと検索バケットの両方に存在し得るため複合主キー。
+    /// </summary>
+    private const string TweetsDdl = """
+        CREATE TABLE IF NOT EXISTS tweets (
+          tweet_id             TEXT NOT NULL,
+          id_int               INTEGER NOT NULL,
+          username             TEXT NOT NULL,
+          author_username      TEXT,
+          author_display_name  TEXT,
+          author_icon_url      TEXT,
+          created_at_utc       TEXT NOT NULL,
+          sort_key             INTEGER NOT NULL,
+          tweet_type           INTEGER NOT NULL,
+          full_text            TEXT NOT NULL,
+          lang                 TEXT,
+          in_reply_to_username TEXT,
+          rt_username          TEXT,
+          rt_display_name      TEXT,
+          rt_text              TEXT,
+          rt_icon_url          TEXT,
+          quoted_username      TEXT,
+          quoted_display_name  TEXT,
+          quoted_text          TEXT,
+          quoted_icon_url      TEXT,
+          like_count           INTEGER NOT NULL DEFAULT 0,
+          retweet_count        INTEGER NOT NULL DEFAULT 0,
+          reply_count          INTEGER NOT NULL DEFAULT 0,
+          view_count           INTEGER NOT NULL DEFAULT 0,
+          media_count          INTEGER NOT NULL DEFAULT 0,
+          raw_offset           INTEGER NOT NULL,
+          raw_length           INTEGER NOT NULL,
+          PRIMARY KEY (username, tweet_id)
+        ) WITHOUT ROWID;
+
+        CREATE INDEX IF NOT EXISTS ix_tweets_user_sort
+          ON tweets(username, sort_key DESC, id_int DESC);
+        """;
 
     public string DataDir { get; }
     public string DbPath { get; }
@@ -68,35 +110,7 @@ public sealed class ViewerDatabase
               jsonl_offset   INTEGER NOT NULL DEFAULT 0
             );
 
-            CREATE TABLE IF NOT EXISTS tweets (
-              tweet_id             TEXT PRIMARY KEY,
-              id_int               INTEGER NOT NULL,
-              username             TEXT NOT NULL,
-              created_at_utc       TEXT NOT NULL,
-              sort_key             INTEGER NOT NULL,
-              tweet_type           INTEGER NOT NULL,
-              full_text            TEXT NOT NULL,
-              lang                 TEXT,
-              in_reply_to_username TEXT,
-              rt_username          TEXT,
-              rt_display_name      TEXT,
-              rt_text              TEXT,
-              rt_icon_url          TEXT,
-              quoted_username      TEXT,
-              quoted_display_name  TEXT,
-              quoted_text          TEXT,
-              quoted_icon_url      TEXT,
-              like_count           INTEGER NOT NULL DEFAULT 0,
-              retweet_count        INTEGER NOT NULL DEFAULT 0,
-              reply_count          INTEGER NOT NULL DEFAULT 0,
-              view_count           INTEGER NOT NULL DEFAULT 0,
-              media_count          INTEGER NOT NULL DEFAULT 0,
-              raw_offset           INTEGER NOT NULL,
-              raw_length           INTEGER NOT NULL
-            ) WITHOUT ROWID;
-
-            CREATE INDEX IF NOT EXISTS ix_tweets_user_sort
-              ON tweets(username, sort_key DESC, id_int DESC);
+            """ + TweetsDdl + """
 
             CREATE TABLE IF NOT EXISTS tweet_media (
               tweet_id   TEXT NOT NULL,
@@ -128,7 +142,7 @@ public sealed class ViewerDatabase
 
             CREATE INDEX IF NOT EXISTS ix_user_tags_tag ON user_tags(tag_id);
 
-            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '4');
+            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '5');
             """;
         cmd.ExecuteNonQuery();
 
@@ -158,6 +172,22 @@ public sealed class ViewerDatabase
             using var cmd4 = conn.CreateCommand();
             cmd4.CommandText = "UPDATE schema_meta SET value = '4' WHERE key = 'schema_version'";
             cmd4.ExecuteNonQuery();
+        }
+        if (stored < 5)
+        {
+            // author 3列の追加 + 主キーを (username, tweet_id) に変更するためテーブルを作り直す。
+            // 派生データはリセットし次回取込で再構築 (ローカル処理のみで API 消費なし)。
+            using var tx = conn.BeginTransaction();
+            using var cmd5 = conn.CreateCommand();
+            cmd5.Transaction = tx;
+            cmd5.CommandText = "DROP TABLE tweets;\n" + TweetsDdl + """
+
+                DELETE FROM tweet_media;
+                UPDATE users SET jsonl_offset = 0;
+                UPDATE schema_meta SET value = '5' WHERE key = 'schema_version';
+                """;
+            cmd5.ExecuteNonQuery();
+            tx.Commit();
         }
     }
 

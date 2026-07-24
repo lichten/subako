@@ -72,11 +72,15 @@ public static partial class TweetJsonParser
 
             var media = ExtractMedia(root, tweetId);
 
+            var author = GetObject(root, "user");
             var row = new TweetRow
             {
                 TweetId = tweetId,
                 IdInt = idInt,
                 Username = username,
+                AuthorUsername = GetString(author, "username"),
+                AuthorDisplayName = GetString(author, "display_name"),
+                AuthorIconUrl = GetString(author, "profile_image_url"),
                 CreatedAtUtc = createdAtUtc,
                 SortKey = sortKey,
                 Type = type,

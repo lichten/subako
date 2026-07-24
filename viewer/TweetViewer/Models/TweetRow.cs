@@ -14,6 +14,10 @@ public sealed record TweetRow
     public required string TweetId { get; init; }
     public required long IdInt { get; init; }
     public required string Username { get; init; }
+    /// <summary>実投稿者 (JSONL の user 由来)。Username がバケット ID の場合の表示に使う。</summary>
+    public string? AuthorUsername { get; init; }
+    public string? AuthorDisplayName { get; init; }
+    public string? AuthorIconUrl { get; init; }
     public required string CreatedAtUtc { get; init; }
     public required long SortKey { get; init; }
     public required TweetType Type { get; init; }
