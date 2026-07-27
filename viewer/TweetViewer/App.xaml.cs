@@ -36,7 +36,8 @@ public partial class App : Application
         var fetchService = new FetchProcessService(settings);
         var iconCache = new IconCache(settings.EffectiveDataDir);
 
-        var mainVm = new MainViewModel(db, users, tweets, tags, importer, _readQueue, fetchService, iconCache);
+        var mainVm = new MainViewModel(db, users, tweets, tags, importer, _readQueue, fetchService, iconCache,
+            settings.UnreadOnly);
         var window = new MainWindow(settings) { DataContext = mainVm };
         MainWindow = window;
         window.Show();

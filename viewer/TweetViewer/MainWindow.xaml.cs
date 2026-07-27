@@ -52,6 +52,7 @@ public partial class MainWindow : Window
             _settings.WindowHeight = bounds.Height;
         }
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
+        _settings.UnreadOnly = Vm.UnreadOnly;
         _settings.Save();
         base.OnClosing(e);
     }

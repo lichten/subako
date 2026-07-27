@@ -67,8 +67,10 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel(
         ViewerDatabase db, UserRepository users, TweetRepository tweets, TagRepository tags,
         JsonlImporter importer, ReadMarkQueue readQueue, FetchProcessService fetchService,
-        IconCache iconCache)
+        IconCache iconCache, bool unreadOnly = false)
     {
+        // プロパティ経由だと SelectedUser 確定前に ResetListAsync が走るためフィールドを直接初期化
+        _unreadOnly = unreadOnly;
         _db = db;
         _users = users;
         _tags = tags;

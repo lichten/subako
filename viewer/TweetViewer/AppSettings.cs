@@ -22,6 +22,9 @@ public sealed class AppSettings
     public double? WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
 
+    /// <summary>前回終了時の「未読のみ」フィルタの状態。</summary>
+    public bool UnreadOnly { get; set; }
+
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "TweetViewer", "settings.json");
