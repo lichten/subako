@@ -122,10 +122,17 @@ public sealed partial class MainViewModel : ObservableObject
         var byName = Users.ToDictionary(u => u.Username, StringComparer.OrdinalIgnoreCase);
         foreach (var row in rows)
         {
-            if (byName.TryGetValue(row.Username, out var existing))
+            if (byName.Remove(row.Username, out var existing))
                 existing.ApplyCounts(row);
             else
                 Users.Add(new UserItemViewModel(row));
+        }
+        // DB から消えた行 (削除されたユーザー) を一覧から除く
+        foreach (var removed in byName.Values)
+        {
+            Users.Remove(removed);
+            if (SelectedUser == removed)
+                SelectedUser = null;
         }
         foreach (var user in Users)
             ResolveUserIcon(user);
@@ -431,24 +438,63 @@ public sealed partial class MainViewModel : ObservableObject
         return (bucketId, finalQuery);
     }
 
-    /// <summary>検索バケットの削除 (DB + フォルダ)。</summary>
-    public async Task DeleteSearchAsync(SearchItemViewModel item)
+    /// <summary>
+    /// アーカイブを DB から削除し、フォルダを削除 (deleteFiles) または _trash へ退避する。
+    /// 戻り値は失敗理由 (成功時 null)。フォルダが残ると次回起動の自動登録で復活するため、
+    /// 呼び出し側は失敗を必ずユーザーに伝えること。
+    /// </summary>
+    private async Task<string?> RemoveArchiveAsync(string username, bool deleteFiles)
+    {
+        await _users.DeleteArchiveAsync(username);
+        try
+        {
+            if (deleteFiles)
+            {
+                var dir = _db.UserDir(username);
+                if (Directory.Exists(dir))
+                    Directory.Delete(dir, recursive: true);
+            }
+            else
+            {
+                ArchiveTrash.MoveToTrash(_db.DataDir, username);
+            }
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // async void ハンドラ経由なので捕まえないとアプリが落ちる
+            return deleteFiles
+                ? $"フォルダの削除に失敗しました: {ex.Message}"
+                : $"フォルダの退避に失敗しました: {ex.Message}";
+        }
+    }
+
+    /// <summary>ユーザーの削除 (DB + フォルダ)。戻り値は失敗理由 (成功時 null)。</summary>
+    public async Task<string?> DeleteUserAsync(UserItemViewModel item, bool deleteFiles)
+    {
+        if (SelectedUser == item)
+            SelectedUser = null;
+        var error = await RemoveArchiveAsync(item.Username, deleteFiles);
+        await RefreshUsersAsync();
+        await RefreshTagsAsync();
+        SelectedUser ??= UsersView.Cast<UserItemViewModel>().FirstOrDefault();
+        StatusText = error ?? $"@{item.Username} を削除しました" +
+            (deleteFiles ? "" : $" (データは {ArchiveTrash.TrashDirName} に退避)");
+        return error;
+    }
+
+    /// <summary>検索バケットの削除 (DB + フォルダ)。戻り値は失敗理由 (成功時 null)。</summary>
+    public async Task<string?> DeleteSearchAsync(SearchItemViewModel item, bool deleteFiles)
     {
         if (SelectedSearch == item)
             SelectedSearch = null;
-        await _users.DeleteBucketAsync(item.Username);
-        try
-        {
-            var dir = _db.UserDir(item.Username);
-            if (Directory.Exists(dir))
-                Directory.Delete(dir, recursive: true);
-        }
-        catch (IOException ex)
-        {
-            StatusText = $"フォルダの削除に失敗しました: {ex.Message}";
-        }
+        var error = await RemoveArchiveAsync(item.Username, deleteFiles);
         await RefreshSearchesAsync();
-        StatusText = $"検索「{item.Query}」を削除しました";
+        await RefreshTagsAsync();
+        SelectedUser ??= UsersView.Cast<UserItemViewModel>().FirstOrDefault();
+        StatusText = error ?? $"検索「{item.Label}」を削除しました" +
+            (deleteFiles ? "" : $" (データは {ArchiveTrash.TrashDirName} に退避)");
+        return error;
     }
 
     private bool CanRebuild() => SelectedUser is not null && !IsFetching;

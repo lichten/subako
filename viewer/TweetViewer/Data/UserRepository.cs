@@ -119,8 +119,11 @@ public sealed class UserRepository
         return added;
     }
 
-    /// <summary>検索バケットを DB (tweets / tweet_media / users) から削除する。read_state の孤児行は無害なので残す。</summary>
-    public async Task DeleteBucketAsync(string bucketId)
+    /// <summary>
+    /// ユーザーまたは検索バケットを DB (tweets / tweet_media / user_tags / users) から削除する。
+    /// read_state は tweet_id 単位で全アーカイブ共通のため消さない (孤児行は無害)。
+    /// </summary>
+    public async Task DeleteArchiveAsync(string username)
     {
         await _db.WriteLock.WaitAsync().ConfigureAwait(false);
         try
@@ -139,7 +142,7 @@ public sealed class UserRepository
                     DELETE FROM user_tags WHERE username = $u;
                     DELETE FROM users WHERE username = $u;
                     """;
-                cmd.Parameters.AddWithValue("$u", bucketId);
+                cmd.Parameters.AddWithValue("$u", username);
                 cmd.ExecuteNonQuery();
                 tx.Commit();
             }).ConfigureAwait(false);

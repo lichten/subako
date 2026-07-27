@@ -250,15 +250,39 @@ public partial class MainWindow : Window
             await Vm.UpdateSearchAsync(item, dialog.Query, dialog.SearchName);
     }
 
+    /// <summary>取得中の削除は Python 側がフォルダを書き戻すため不可。</summary>
     private async void MenuSearchDelete_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { DataContext: SearchItemViewModel item })
+        if (sender is not MenuItem { DataContext: SearchItemViewModel item } || Vm.IsFetching)
             return;
-        var result = MessageBox.Show(
-            $"検索「{item.Query}」を削除しますか?\n保存済みの {item.TweetCount:N0}件と画像も削除されます。",
-            "TweetViewer", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (result == MessageBoxResult.Yes)
-            await Vm.DeleteSearchAsync(item);
+        var dialog = new DeleteArchiveDialog($"検索「{item.Label}」を削除しますか?", item.TweetCount)
+        {
+            Owner = this,
+        };
+        if (dialog.ShowDialog() == true)
+            ReportDeleteFailure(await Vm.DeleteSearchAsync(item, dialog.DeleteFiles));
+    }
+
+    private async void MenuUserDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: UserItemViewModel item } || Vm.IsFetching)
+            return;
+        var dialog = new DeleteArchiveDialog($"@{item.Username} を削除しますか?", item.TweetCount)
+        {
+            Owner = this,
+        };
+        if (dialog.ShowDialog() == true)
+            ReportDeleteFailure(await Vm.DeleteUserAsync(item, dialog.DeleteFiles));
+    }
+
+    /// <summary>
+    /// フォルダ操作が失敗するとステータスバーだけでは見落とし、
+    /// 次回起動の自動登録で復活して混乱するため明示的に知らせる。
+    /// </summary>
+    private void ReportDeleteFailure(string? error)
+    {
+        if (error is not null)
+            MessageBox.Show(error, "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void MediaCell_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)

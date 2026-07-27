@@ -14,12 +14,28 @@ data/
 │   ├── tweets.jsonl          # 生ツイートアーカイブ (正データ、§2)
 │   ├── state.json            # fetcher 私有 (§6)
 │   └── images/               # 画像 (§3)
-└── searches/<slug>/          # キーワード検索バケット (§1.5)
-    ├── tweets.jsonl          # 検索結果 (正データ、§2 と同契約)
-    ├── search.json           # クエリ原文メタデータ (§1.5)
-    ├── state.json            # fetcher 私有 (§6)
-    └── images/               # 画像 (§3)
+├── searches/<slug>/          # キーワード検索バケット (§1.5)
+│   ├── tweets.jsonl          # 検索結果 (正データ、§2 と同契約)
+│   ├── search.json           # クエリ原文メタデータ (§1.5)
+│   ├── state.json            # fetcher 私有 (§6)
+│   └── images/               # 画像 (§3)
+└── _trash/                   # 削除時の退避先 (§1.6)
 ```
+
+### 1.6 削除の退避先 (`data/_trash/`)
+
+ビューアの削除で「データも完全に削除」を選ばなかった場合、アーカイブフォルダを
+元の階層構造のまま `data/_trash/` 配下へ移動する
+(`data/_trash/<username>/`、検索は `data/_trash/searches/<slug>/`)。
+
+- 自動登録 (`RegisterExistingDataDirsAsync` / `RegisterExistingSearchDirsAsync`) は
+  `data/` 直下と `data/searches/` 直下しか走査しないため、**`_trash` 配下は
+  アーカイブとして認識されない**。DB 行だけ消してフォルダを残すと次回起動で
+  復活してしまうので、移動が必須。
+- フォルダを元の位置へ戻せば次回起動時に再登録され、`read_state` を消していないので
+  既読状態も復元される。再取得の API リクエストは不要。
+- `_trash` 配下は手動で削除して構わない (アプリは読まない)。
+- 同名が既にある場合は `<name>_yyyyMMdd_HHmmss` として退避する (上書きしない)。
 
 ### 1.5 キーワード検索バケット (`data/searches/<slug>/`)
 
@@ -144,6 +160,11 @@ data/
 `read_state` は `tweets` への FK を持たない。rebuild で `tweets` を
 DELETE しても既読状態は残る。孤児行(対応ツイートが無い read_state)は
 無害であり、**削除してはならない**。
+
+ユーザー/バケットの削除でも同様に `read_state` は残す。PK が `tweet_id` のみで
+全アーカイブ共通のため、`WHERE username = ...` で消すと**同じツイートを含む
+他アーカイブの既読状態まで失われる**。削除で消すのは
+`users` / `tweets` / `user_tags` と、孤児になった `tweet_media` のみ。
 
 ### 4.2 DDL(schema_version = 5)
 

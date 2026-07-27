@@ -140,6 +140,8 @@
                                         <!-- 子が空だと SubmenuOpened が発火しないためのプレースホルダ -->
                                         <MenuItem Header="(読込中)" />
                                     </MenuItem>
+                                    <Separator />
+                                    <MenuItem Header="削除..." Click="MenuUserDelete_Click" />
                                 </ContextMenu>
                             </Grid.ContextMenu>
                             <Grid.ColumnDefinitions>

@@ -240,7 +240,7 @@ public sealed class JsonlImporterTests : IDisposable
         await tags.AssignAsync("searches/kw-12345678", tagId);
 
         // バケット削除ではアーカイブ側の行は残る
-        await users.DeleteBucketAsync("searches/kw-12345678");
+        await users.DeleteArchiveAsync("searches/kw-12345678");
         Assert.Equal(0, CountTweets("searches/kw-12345678"));
         Assert.Equal(1, CountTweets("alice"));
         var assignments = await tags.GetAssignmentsAsync();
