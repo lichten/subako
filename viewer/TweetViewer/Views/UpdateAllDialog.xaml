@@ -1,0 +1,33 @@
+<Window x:Class="TweetViewer.Views.UpdateAllDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="表示中をすべて更新" Width="460" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        WindowStyle="ToolWindow">
+    <!-- Grid.Row は必ず明示する (省略すると全て行 0 に重なって描画される) -->
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" x:Name="TargetText" TextWrapping="Wrap" />
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="最大リクエスト数 (合計):" VerticalAlignment="Center" />
+            <TextBox x:Name="MaxRequestsBox" Width="90" Margin="8,0,0,0" FontSize="14"
+                     Text="100" VerticalContentAlignment="Center" />
+        </StackPanel>
+        <TextBlock Grid.Row="2" TextWrapping="Wrap" Foreground="#666" FontSize="12"
+                   Margin="0,10,0,0">
+            上から順に差分更新します。指定した回数は全体の合計で、上限に達した時点で停止し、
+            残りは次回の実行に持ち越せます。差分が無いユーザーは 1 リクエストで終わります。
+            個別に失敗したものは飛ばして続行し、最後にまとめて報告します。
+        </TextBlock>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,18,0,0">
+            <Button Content="開始" Width="80" IsDefault="True" Click="Ok_Click" />
+            <Button Content="キャンセル" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

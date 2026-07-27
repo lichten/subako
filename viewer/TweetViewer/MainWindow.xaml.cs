@@ -208,6 +208,41 @@ public partial class MainWindow : Window
         _ = RunFetchAsync(dialogVm);
     }
 
+    /// <summary>
+    /// サイドバーに表示中 (タグフィルタ適用後) のユーザーと検索を順に差分更新する。
+    /// StartFetch は IsFetching ガードで単発前提のため、ここで同じ形のループを組む。
+    /// </summary>
+    private void UpdateAllVisible_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm.IsFetching)
+            return;
+        // 列挙中に Refresh() が走ると例外になるため、開始時にスナップショットを取る
+        var users = Vm.UsersView.Cast<UserItemViewModel>().ToList();
+        var searches = Vm.SearchesView.Cast<SearchItemViewModel>().ToList();
+        if (users.Count + searches.Count == 0)
+        {
+            Vm.StatusText = "更新できる対象が表示されていません";
+            return;
+        }
+
+        var dialog = new UpdateAllDialog(users.Count, searches.Count) { Owner = this };
+        if (dialog.ShowDialog() != true)
+            return;
+
+        var targets = users
+            .Select(u => new FetchTarget(u.Username, $"@{u.Username}", FetchMode.Update))
+            .Concat(searches.Select(s =>
+                new FetchTarget(s.Username, $"検索「{s.Label}」", FetchMode.SearchUpdate, s.Query)))
+            .ToList();
+
+        Vm.IsFetching = true;
+        var dialogVm = new FetchDialogViewModel(
+            Vm.FetchService, targets, Vm.OnFetchCompletedAsync, dialog.MaxRequests);
+        var window = new UpdateLogWindow { Owner = this, DataContext = dialogVm };
+        window.Show();
+        _ = RunFetchAsync(dialogVm);
+    }
+
     private async void AddSearch_Click(object sender, RoutedEventArgs e)
     {
         if (Vm.IsFetching)

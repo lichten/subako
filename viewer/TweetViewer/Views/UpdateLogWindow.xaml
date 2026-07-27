@@ -6,7 +6,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:FetchDialogViewModel}"
-        Title="{Binding Username, StringFormat=更新: @{0}}" Height="420" Width="680"
+        Title="{Binding WindowTitle}" Height="420" Width="680"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="8">
         <Grid.RowDefinitions>

@@ -125,6 +125,10 @@ public sealed class FetchProcessService
             }
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
         }
+        // WaitForExitAsync は非同期読み取りの完了までは保証しないため、引数なしの
+        // WaitForExit で出力の取りこぼしを防ぐ (最終行の消費リクエスト数を確実に届ける)。
+        // プロセスは既に終了しているので待ちはごく短いが、UI を止めないよう別スレッドで待つ
+        await Task.Run(process.WaitForExit).ConfigureAwait(false);
         return new FetchResult(process.ExitCode, cancelled);
     }
 
