@@ -50,6 +50,67 @@ public class TweetJsonParserTests
         Assert.Equal("https://pbs.twimg.com/profile_images/1/o_normal.jpg", parsed.AuthorIconUrl);
     }
 
+    // 以下 3 件: RT のカウントは外側と RT元に分かれて入る (実データ 1,496 件で確認)。
+    // いいねは RT元にしか、表示回数は外側にしか無く、RT 数は RT元が 0 の行がある。
+
+    [Fact]
+    public void RetweetCounts_FallBackToRetweetedStatus()
+    {
+        var parsed = ParseOk("""
+            {"id":"1","full_text":"RT @a: 略",
+             "reply_count":0,"retweet_count":113,"likes_count":0,"view_count":50,
+             "retweeted_status":{"id":"2","full_text":"元の全文","user":{"username":"alice"},
+               "reply_count":0,"retweet_count":0,"likes_count":42,"view_count":0}}
+            """.ReplaceLineEndings(""));
+        Assert.Equal(42, parsed.Row.LikeCount);      // 外側 0 → RT元から
+        Assert.Equal(113, parsed.Row.RetweetCount);  // RT元が 0 なので外側を維持
+        Assert.Equal(50, parsed.Row.ViewCount);      // RT元は常に 0
+        Assert.Equal(0, parsed.Row.ReplyCount);      // どちらにも無い (API の欠損)
+    }
+
+    [Fact]
+    public void RetweetCounts_KeepOuterWhenNonZero()
+    {
+        // 外側に値があるときは RT元で上書きしない
+        var parsed = ParseOk("""
+            {"id":"1","full_text":"RT @a: 略","retweet_count":10,"likes_count":7,
+             "retweeted_status":{"id":"2","full_text":"元","user":{"username":"alice"},
+               "retweet_count":999,"likes_count":999}}
+            """.ReplaceLineEndings(""));
+        Assert.Equal(10, parsed.Row.RetweetCount);
+        Assert.Equal(7, parsed.Row.LikeCount);
+    }
+
+    [Fact]
+    public void QuotedStatusCountsAreNotUsed()
+    {
+        // 引用ツイートは自分自身の投稿なので外側の値が正しい (0 も正当)
+        var parsed = ParseOk("""
+            {"id":"1","full_text":"引用します","is_quote_status":true,
+             "reply_count":0,"retweet_count":0,"likes_count":0,"view_count":0,
+             "quoted_status":{"id":"2","full_text":"元","user":{"username":"bob"},
+               "reply_count":88,"retweet_count":77,"likes_count":999,"view_count":66}}
+            """.ReplaceLineEndings(""));
+        Assert.Equal(TweetType.Quote, parsed.Row.Type);
+        Assert.Equal(0, parsed.Row.LikeCount);
+        Assert.Equal(0, parsed.Row.RetweetCount);
+        Assert.Equal(0, parsed.Row.ReplyCount);
+        Assert.Equal(0, parsed.Row.ViewCount);
+    }
+
+    [Fact]
+    public void PlainTweetCounts_ReadFromTopLevel()
+    {
+        var parsed = ParseOk("""
+            {"id":"1","full_text":"x","reply_count":3,"retweet_count":10,
+             "likes_count":25,"view_count":1200}
+            """.ReplaceLineEndings(""));
+        Assert.Equal(3, parsed.Row.ReplyCount);
+        Assert.Equal(10, parsed.Row.RetweetCount);
+        Assert.Equal(25, parsed.Row.LikeCount);
+        Assert.Equal(1200, parsed.Row.ViewCount);
+    }
+
     [Fact]
     public void AuthorFields_FilledFromUserObject()
     {

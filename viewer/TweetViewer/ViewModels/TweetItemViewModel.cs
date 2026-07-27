@@ -166,9 +166,24 @@ public sealed partial class TweetItemViewModel : ObservableObject
         }
     }
 
-    public string CountsText =>
-        $"返信 {Row.ReplyCount:N0}  RT {Row.RetweetCount:N0}  いいね {Row.LikeCount:N0}" +
-        (Row.ViewCount > 0 ? $"  表示 {Row.ViewCount:N0}" : "");
+    /// <summary>
+    /// カウント行。取得できない値は項目ごと出さない (0 と偽らない)。
+    /// リツイートの返信数は API が外側にも RT元にも返さないため非表示。
+    /// </summary>
+    public string CountsText
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!IsRetweet)
+                parts.Add($"返信 {Row.ReplyCount:N0}");
+            parts.Add($"RT {Row.RetweetCount:N0}");
+            parts.Add($"いいね {Row.LikeCount:N0}");
+            if (Row.ViewCount > 0)
+                parts.Add($"表示 {Row.ViewCount:N0}");
+            return string.Join("  ", parts);
+        }
+    }
 
     [RelayCommand]
     private Task ToggleRead() => _owner.ToggleReadAsync(this);

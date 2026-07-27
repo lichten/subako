@@ -95,10 +95,10 @@ public static partial class TweetJsonParser
                 QuotedDisplayName = quoted is null ? null : GetString(GetObject(quoted.Value, "user"), "display_name"),
                 QuotedText = quoted is null ? null : GetString(quoted.Value, "full_text") ?? GetString(quoted.Value, "text"),
                 QuotedIconUrl = quoted is null ? null : GetString(GetObject(quoted.Value, "user"), "profile_image_url"),
-                LikeCount = GetLong(root, "likes_count"),
-                RetweetCount = GetLong(root, "retweet_count"),
-                ReplyCount = GetLong(root, "reply_count"),
-                ViewCount = GetLong(root, "view_count"),
+                LikeCount = Count(root, rt, "likes_count"),
+                RetweetCount = Count(root, rt, "retweet_count"),
+                ReplyCount = Count(root, rt, "reply_count"),
+                ViewCount = Count(root, rt, "view_count"),
                 MediaCount = media.Count,
                 RawOffset = rawOffset,
                 RawLength = rawLength,
@@ -282,6 +282,23 @@ public static partial class TweetJsonParser
 
     private static bool GetBool(JsonElement obj, string key) =>
         obj.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True;
+
+    /// <summary>
+    /// カウントの取得。RT のときはトップレベルが 0 なら RT元にフォールバックする。
+    /// 実データ (リツイート 1,496 件) の実測:
+    /// いいね/ブックマーク/引用数は RT ラッパー側が常に 0 で RT元にしか無い。
+    /// 逆に表示回数は RT元が常に 0 で外側にしか無く、RT 数は RT元が 0 の行がある。
+    /// この 1 規則で 4 項目とも正しい方が採れる。返信数はどちらにも無い (API の欠損)。
+    /// 引用 (quoted_status) にはフォールバックしない — 引用ツイートは自分の投稿なので
+    /// 外側の値が正しく、0 も正当な値。
+    /// </summary>
+    private static long Count(JsonElement root, JsonElement? rt, string key)
+    {
+        var value = GetLong(root, key);
+        if (value != 0 || rt is not { } source)
+            return value;
+        return GetLong(source, key);
+    }
 
     private static long GetLong(JsonElement obj, string key) =>
         obj.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number &&
