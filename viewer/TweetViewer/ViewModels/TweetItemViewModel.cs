@@ -79,6 +79,25 @@ public sealed partial class TweetItemViewModel : ObservableObject
         ? Row.RtUsername!
         : Row.AuthorUsername ?? Row.Username;
 
+    /// <summary>右クリック「ユーザーに追加」の対象作者。RT は RT元作者。特定不能 (バケット ID 等) なら null。</summary>
+    public string? AddableAuthorUsername
+    {
+        get
+        {
+            var name = IsRetweet && !string.IsNullOrEmpty(Row.RtUsername)
+                ? Row.RtUsername
+                : Row.AuthorUsername ?? Row.Username;
+            return string.IsNullOrEmpty(name) || name.Contains('/') ? null : name;
+        }
+    }
+
+    public bool CanAddAuthor => AddableAuthorUsername is not null;
+
+    /// <summary>MenuItem Header 用。_ はアクセスキー記号のため __ にエスケープ。</summary>
+    public string AddAuthorMenuHeader => AddableAuthorUsername is { } u
+        ? $"@{u.Replace("_", "__")} をユーザーに追加"
+        : "作者をユーザーに追加";
+
     public string RtHeader => IsRetweet ? $"{AuthorName} さんがリツイート" : "";
     public string RtText => Row.RtText ?? "";
     public string ReplyHeader => IsReply ? $"@{Row.InReplyToUsername} への返信" : "";

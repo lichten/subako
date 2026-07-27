@@ -313,22 +313,56 @@ public sealed partial class MainViewModel : ObservableObject
             search.UnreadCount = Math.Max(0, search.UnreadCount + delta);
     }
 
+    /// <summary>@ を外して英数字と _ のみ検証。不正なら null。</summary>
+    private static string? NormalizeUsername(string username)
+    {
+        username = username.TrimStart('@').Trim();
+        return username.Length == 0 || username.Any(c => !char.IsLetterOrDigit(c) && c != '_')
+            ? null : username;
+    }
+
     /// <summary>ユーザー追加(AddUserDialog から)。登録後に一覧を更新して選択。</summary>
     public async Task<UserItemViewModel?> AddUserAsync(string username)
     {
-        username = username.TrimStart('@').Trim();
-        if (username.Length == 0 || username.Any(c => !char.IsLetterOrDigit(c) && c != '_'))
+        if (NormalizeUsername(username) is not { } name)
         {
             StatusText = "ユーザー名は英数字と _ のみ使用できます";
             return null;
         }
-        await _users.AddAsync(username);
+        await _users.AddAsync(name);
         await RefreshUsersAsync();
         var added = Users.FirstOrDefault(
-            u => string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase));
+            u => string.Equals(u.Username, name, StringComparison.OrdinalIgnoreCase));
         if (added is not null)
             SelectedUser = added;
         return added;
+    }
+
+    /// <summary>ツイート右クリックから作者を追加。表示は切り替えず、表示中ユーザー/検索のタグを引き継ぐ。</summary>
+    public async Task<(UserItemViewModel? User, bool IsNew)> AddAuthorFromTweetAsync(string username)
+    {
+        if (NormalizeUsername(username) is not { } name)
+        {
+            StatusText = "ユーザー名は英数字と _ のみ使用できます";
+            return (null, false);
+        }
+        // 自分自身を追加した場合に added.Tags と同一参照でループが壊れないようスナップショット
+        var sourceTags = (SelectedSearch?.Tags ?? SelectedUser?.Tags)?.ToList() ?? [];
+        var isNew = await _users.AddAsync(name);
+        await RefreshUsersAsync();
+        var added = Users.FirstOrDefault(
+            u => string.Equals(u.Username, name, StringComparison.OrdinalIgnoreCase));
+        if (added is null)
+            return (null, false);
+        foreach (var tag in sourceTags)
+            await ToggleTagAsync(added, tag, assign: true);
+        StatusText = isNew
+            ? $"@{added.Username} を追加しました" +
+              (sourceTags.Count > 0 ? $" (タグ {sourceTags.Count}件を引き継ぎ)" : "")
+            : sourceTags.Count > 0
+                ? $"@{added.Username} は登録済みのためタグのみ引き継ぎました"
+                : $"@{added.Username} は登録済みです";
+        return (added, isNew);
     }
 
     /// <summary>取得完了後の差分取込+画面反映(UpdateLogWindow から)。username はバケット ID の場合もある。</summary>

@@ -82,6 +82,23 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>ツイート右クリック「@xxx をユーザーに追加」。表示中ユーザー/検索のタグを引き継ぐ。</summary>
+    private async void MenuAddAuthor_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: TweetItemViewModel tweet } ||
+            tweet.AddableAuthorUsername is not { } username)
+            return;
+        var (added, isNew) = await Vm.AddAuthorFromTweetAsync(username);
+        if (isNew && added is { TweetCount: 0 })
+        {
+            var run = MessageBox.Show(
+                $"@{added.Username} を追加しました。今すぐツイートを取得しますか?",
+                "TweetViewer", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (run == MessageBoxResult.Yes)
+                StartFetch(added.Username, FetchMode.Update, maxRequests: null);
+        }
+    }
+
     private void UpdateUser_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: UserItemViewModel user })

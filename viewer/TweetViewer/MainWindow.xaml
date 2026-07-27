@@ -10,6 +10,20 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d">
+    <Window.Resources>
+        <!-- ツイート行の右クリックメニュー。Style Setter 内に直接書くと Click ハンドラの
+             接続 ID がずれて起動時に InvalidCastException になるためリソースに置く -->
+        <ContextMenu x:Key="TweetContextMenu">
+            <MenuItem Header="ブラウザで開く"
+                      Command="{Binding OpenInBrowserCommand}" />
+            <MenuItem Header="{Binding AddAuthorMenuHeader}"
+                      IsEnabled="{Binding CanAddAuthor}"
+                      Click="MenuAddAuthor_Click" />
+            <Separator />
+            <MenuItem Header="既読/未読を切り替え"
+                      Command="{Binding ToggleReadCommand}" />
+        </ContextMenu>
+    </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -227,17 +241,7 @@
                     <Style TargetType="ListBoxItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Padding" Value="0" />
-                        <Setter Property="ContextMenu">
-                            <Setter.Value>
-                                <ContextMenu>
-                                    <MenuItem Header="ブラウザで開く"
-                                              Command="{Binding OpenInBrowserCommand}" />
-                                    <Separator />
-                                    <MenuItem Header="既読/未読を切り替え"
-                                              Command="{Binding ToggleReadCommand}" />
-                                </ContextMenu>
-                            </Setter.Value>
-                        </Setter>
+                        <Setter Property="ContextMenu" Value="{StaticResource TweetContextMenu}" />
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
