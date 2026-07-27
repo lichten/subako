@@ -24,7 +24,11 @@ public sealed partial class TweetItemViewModel : ObservableObject
     [ObservableProperty]
     private string? _quotedIconPath;
 
+    /// <summary>本文と RT元の画像 (本文欄に表示)。</summary>
     public IReadOnlyList<string> ImagePaths { get; }
+
+    /// <summary>引用先ツイートの画像 (引用ブロック内に表示)。</summary>
+    public IReadOnlyList<string> QuotedImagePaths { get; }
 
     public TweetItemViewModel(
         TweetListViewModel owner, TweetRow row, IReadOnlyList<TweetMediaRow> media,
@@ -34,7 +38,8 @@ public sealed partial class TweetItemViewModel : ObservableObject
         Row = row;
         _isRead = row.IsRead;
         OwnerDisplayName = ownerDisplayName;
-        ImagePaths = ResolveImagePaths(media, imagesDir);
+        ImagePaths = ResolveImagePaths(media, imagesDir, m => m.Origin != MediaOrigin.Quoted);
+        QuotedImagePaths = ResolveImagePaths(media, imagesDir, m => m.Origin == MediaOrigin.Quoted);
 
         var mainUrl = (IsRetweet ? Row.RtIconUrl : null) ?? Row.AuthorIconUrl ?? ownerIconUrl;
         ResolveIcon(iconCache, mainUrl, path => MainIconPath = path);
@@ -105,7 +110,9 @@ public sealed partial class TweetItemViewModel : ObservableObject
         ? $"{Row.QuotedDisplayName} @{Row.QuotedUsername}"
         : "";
     public string QuotedText => Row.QuotedText ?? "";
-    public bool HasQuote => IsQuote && !string.IsNullOrEmpty(Row.QuotedText);
+    // 画像だけで本文が空の引用でもブロックを出す
+    public bool HasQuote => IsQuote && (!string.IsNullOrEmpty(Row.QuotedText) || HasQuotedImages);
+    public bool HasQuotedImages => QuotedImagePaths.Count > 0;
 
     /// <summary>本文表示。RT は truncate された "RT @x: …" ではなく元ツイート全文を出す。</summary>
     public string DisplayText =>
@@ -143,9 +150,11 @@ public sealed partial class TweetItemViewModel : ObservableObject
     /// <summary>既読化(スクロール検知から)。二重呼び出しは owner 側で無視。</summary>
     public void MarkReadFromScroll() => _owner.MarkSeen(this);
 
-    private static List<string> ResolveImagePaths(IReadOnlyList<TweetMediaRow> media, string imagesDir)
+    private static List<string> ResolveImagePaths(
+        IReadOnlyList<TweetMediaRow> media, string imagesDir, Func<TweetMediaRow, bool> filter)
     {
         return media
+            .Where(filter)
             .Select(m => LocalMediaFiles.Resolve(imagesDir, m.TweetId, m.Index, m.Ext))
             .OfType<string>()
             .ToList();

@@ -172,6 +172,19 @@ public partial class MainWindow : Window
             await Vm.CreateAndAssignTagAsync(name, username);
     }
 
+    /// <summary>保存済み JSONL から未取得画像だけ補完する (引用先・RT元の画像。API 不使用)。</summary>
+    private void MenuFetchImages_Click(object sender, RoutedEventArgs e)
+    {
+        var username = (sender as MenuItem)?.DataContext switch
+        {
+            UserItemViewModel user => user.Username,
+            SearchItemViewModel search => search.Username,
+            _ => null,
+        };
+        if (username is not null)
+            StartFetch(username, FetchMode.ImagesOnly, maxRequests: null);
+    }
+
     private void MenuBackfill_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { DataContext: UserItemViewModel user } || Vm.IsFetching)

@@ -4,6 +4,8 @@
     python main.py <username> [--output-dir data] [--max-pages N]
                    [--skip-images] [--backfill] [--fresh] [--rps 5]
     python main.py --search "<query>" [--search-name NAME] [--max-requests N]
+    python main.py <username> --images-only          # API を使わず画像だけ補完
+    python main.py --search-name NAME --images-only  # 検索バケットの画像だけ補完
 
 検索クエリには X 標準の検索演算子がそのまま使える:
     スペース区切り = AND / OR (大文字) / "フレーズ" / (グループ) / -除外 /
@@ -26,6 +28,35 @@ from sorsa_fetcher.media import MediaDownloader
 from sorsa_fetcher.storage import Storage
 
 
+def download_missing_images(storage, logger):
+    """保存済み JSONL を読み直して、まだ落ちていない画像だけ取得する (API 不使用)。
+
+    通常の取得経路 (fetcher._handle_page) は「JSONL に新規追加されたツイート」しか
+    ダウンローダに渡さないため、抽出ロジックの改良で新たに拾えるようになった画像
+    (引用先・RT元) は既存アーカイブに対してこの経路で補完する。
+    """
+    downloader = MediaDownloader(storage.images_dir)
+    scanned = 0
+    for tweet in storage.iter_tweets():
+        scanned += 1
+        downloader.download_for_tweet(tweet)
+        if scanned % 500 == 0:
+            logger.info(
+                "走査 %d件 / 新規DL=%d / スキップ(既存)=%d / 失敗=%d",
+                scanned, downloader.downloaded, downloader.skipped, len(downloader.failed),
+            )
+    logger.info(
+        "完了: 走査=%d件 / 新規DL=%d / スキップ(既存)=%d / 失敗=%d / 保存先=%s",
+        scanned, downloader.downloaded, downloader.skipped,
+        len(downloader.failed), storage.images_dir,
+    )
+    if downloader.failed:
+        state = storage.load_state()
+        state["failed_images"] = downloader.failed
+        storage.save_state(state)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Sorsa API で特定ユーザーのツイートを全取得し、画像も保存する"
@@ -40,6 +71,9 @@ def main():
     parser.add_argument("--max-pages", type=int, default=None,
                         help="タイムライン取得の最大ページ数 (試験実行用)")
     parser.add_argument("--skip-images", action="store_true", help="画像をダウンロードしない")
+    parser.add_argument("--images-only", action="store_true",
+                        help="API を一切使わず、保存済み JSONL を読み直して未取得の画像だけ"
+                             "ダウンロードする (引用先・RT元の画像の後追い補完用)")
     parser.add_argument("--backfill", action="store_true",
                         help="タイムライン取得後に search-tweets の期間分割検索で補完する")
     parser.add_argument("--fresh", action="store_true",
@@ -56,7 +90,11 @@ def main():
                              "X の検索インデックスは 2014 年以前をほぼ返さない)")
     args = parser.parse_args()
 
-    if bool(args.username) == bool(args.search):
+    if args.images_only:
+        if bool(args.username) == bool(args.search_name):
+            parser.error(
+                "--images-only は username か --search-name のどちらか一方を指定してください")
+    elif bool(args.username) == bool(args.search):
         parser.error("username か --search のどちらか一方を指定してください")
     try:
         backfill_since = datetime.strptime(
@@ -66,6 +104,13 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logger = logging.getLogger("main")
+
+    if args.images_only:
+        if args.search_name:
+            storage = Storage(os.path.join(args.output_dir, "searches"), args.search_name)
+        else:
+            storage = Storage(args.output_dir, args.username.lstrip("@"))
+        return download_missing_images(storage, logger)
 
     load_dotenv()
     api_key = os.environ.get("SORSA_API_KEY")

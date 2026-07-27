@@ -14,6 +14,8 @@ public enum FetchMode
     SearchUpdate,
     /// <summary>検索の過去期間補完 (--backfill + --backfill-since)。</summary>
     SearchBackfill,
+    /// <summary>API を使わず保存済み JSONL から未取得画像だけ補完 (--images-only)。</summary>
+    ImagesOnly,
 }
 
 public sealed record FetchResult(int ExitCode, bool Cancelled);
@@ -46,8 +48,16 @@ public sealed class FetchProcessService
         };
         psi.ArgumentList.Add("main.py");
         var isSearch = mode is FetchMode.Search or FetchMode.SearchUpdate or FetchMode.SearchBackfill;
-        if (!isSearch)
+        if (mode == FetchMode.ImagesOnly && username.StartsWith("searches/", StringComparison.Ordinal))
+        {
+            // 画像のみ取得は API を使わないのでクエリ不要。バケットは slug だけ渡す
+            psi.ArgumentList.Add("--search-name");
+            psi.ArgumentList.Add(username["searches/".Length..]);
+        }
+        else if (!isSearch)
+        {
             psi.ArgumentList.Add(username);
+        }
         // 共有データフォルダにも対応するため保存先を常に明示する
         psi.ArgumentList.Add("--output-dir");
         psi.ArgumentList.Add(_settings.EffectiveDataDir);
@@ -76,6 +86,9 @@ public sealed class FetchProcessService
                     psi.ArgumentList.Add("--backfill-since");
                     psi.ArgumentList.Add(backfillSince);
                 }
+                break;
+            case FetchMode.ImagesOnly:
+                psi.ArgumentList.Add("--images-only");
                 break;
         }
         if (maxRequests is { } limit)

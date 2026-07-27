@@ -161,6 +161,81 @@ public class TweetJsonParserTests
         Assert.Equal(MediaOrigin.Retweeted, parsed.Media[0].Origin);
     }
 
+    // 以下 4 件: 入れ子ツイート (quoted_status / retweeted_status) の entities は
+    // Sorsa API 実挙動として常に空。展開済みの本文 URL からのフォールバック抽出を検証する。
+
+    [Fact]
+    public void MediaFromQuotedFullText_WhenEntitiesEmpty()
+    {
+        var parsed = ParseOk("""
+            {"id":"90","full_text":"見て","entities":[],
+             "quoted_status":{"id":"91","full_text":"猫 https://pbs.twimg.com/media/QUOTED1.jpg",
+               "entities":[]}}
+            """.ReplaceLineEndings(""));
+        Assert.Single(parsed.Media);
+        Assert.Equal(
+            new TweetMediaRow("90", 1, "https://pbs.twimg.com/media/QUOTED1.jpg", "jpg", MediaOrigin.Quoted),
+            parsed.Media[0]);
+        Assert.Equal(1, parsed.Row.MediaCount);
+    }
+
+    [Fact]
+    public void MediaFromQuotedFullText_AfterOwnEntities()
+    {
+        var parsed = ParseOk("""
+            {"id":"92","full_text":"本文 https://pbs.twimg.com/media/IGNORED.jpg",
+             "entities":[{"type":"photo","link":"https://pbs.twimg.com/media/OWN.jpg"}],
+             "quoted_status":{"id":"93","full_text":"引用 https://pbs.twimg.com/media/QUOTED2.jpg",
+               "entities":[]}}
+            """.ReplaceLineEndings(""));
+        // 本文は entities があるので full_text は見ない (IGNORED.jpg は拾わない)
+        Assert.Equal(2, parsed.Media.Count);
+        Assert.Equal("https://pbs.twimg.com/media/OWN.jpg", parsed.Media[0].SourceUrl);
+        Assert.Equal(MediaOrigin.Own, parsed.Media[0].Origin);
+        Assert.Equal(2, parsed.Media[1].Index);
+        Assert.Equal("https://pbs.twimg.com/media/QUOTED2.jpg", parsed.Media[1].SourceUrl);
+        Assert.Equal(MediaOrigin.Quoted, parsed.Media[1].Origin);
+    }
+
+    [Fact]
+    public void MediaFromFullText_IgnoresNonMediaUrlsAndTrailingPunctuation()
+    {
+        var parsed = ParseOk("""
+            {"id":"94","full_text":"x","entities":[],
+             "quoted_status":{"id":"95","entities":[],
+               "full_text":"記事 https://qiita.com/a/b と引用 https://x.com/u/status/1 と画像https://pbs.twimg.com/media/TRIM.jpg。続く"}}
+            """.ReplaceLineEndings(""));
+        // pbs.twimg.com/media 以外は拾わない。末尾の句読点も巻き込まない
+        Assert.Single(parsed.Media);
+        Assert.Equal("https://pbs.twimg.com/media/TRIM.jpg", parsed.Media[0].SourceUrl);
+    }
+
+    [Fact]
+    public void MediaFromRetweetedFullText_WhenEntitiesEmpty()
+    {
+        var parsed = ParseOk("""
+            {"id":"96","full_text":"RT @a: x","entities":[],
+             "retweeted_status":{"id":"97","full_text":"x https://pbs.twimg.com/media/RTTEXT.jpg",
+               "user":{"username":"a"},"entities":[]}}
+            """.ReplaceLineEndings(""));
+        Assert.Single(parsed.Media);
+        Assert.Equal("https://pbs.twimg.com/media/RTTEXT.jpg", parsed.Media[0].SourceUrl);
+        Assert.Equal(MediaOrigin.Retweeted, parsed.Media[0].Origin);
+    }
+
+    [Fact]
+    public void MediaFromQuotedFullText_DedupedAgainstOwnEntities()
+    {
+        var parsed = ParseOk("""
+            {"id":"98","full_text":"x",
+             "entities":[{"type":"photo","link":"https://pbs.twimg.com/media/DUP.jpg"}],
+             "quoted_status":{"id":"99","full_text":"y https://pbs.twimg.com/media/DUP.jpg","entities":[]}}
+            """.ReplaceLineEndings(""));
+        // 同一 URL は本文優先で 1 件のみ
+        Assert.Single(parsed.Media);
+        Assert.Equal(MediaOrigin.Own, parsed.Media[0].Origin);
+    }
+
     [Fact]
     public void IsoCreatedAtVariants()
     {

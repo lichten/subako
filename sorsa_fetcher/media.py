@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 _PHOTO_TYPES = {"photo", "image"}
 _URL_KEYS = ("preview", "media_url_https", "media_url", "url", "link", "expanded_url")
 
+# full_text から画像 URL を拾うフォールバック用。Sorsa は本文中の t.co を
+# 展開済みの pbs.twimg.com URL にするため、entities が空でも 1 枚目だけは拾える。
+# 末尾の句読点を巻き込まないよう media キー・拡張子・クエリまでを厳密に区切る。
+_TEXT_MEDIA_RE = re.compile(
+    r"https?://pbs\.twimg\.com/media/[A-Za-z0-9_\-]+"
+    r"(?:\.(?:jpg|jpeg|png|webp|gif))?(?:\?[A-Za-z0-9_=&%.\-]*)?"
+)
+
 
 def _iter_media_entries(tweet):
     entities = tweet.get("entities")
@@ -46,6 +54,19 @@ def _pick_image_url(entry):
     return candidates[0] if candidates else None
 
 
+def _media_urls_from_text(tweet):
+    """entities が空のときのフォールバック(本文中の展開済み画像 URL)。
+
+    入れ子の quoted_status / retweeted_status は API 実挙動として entities が
+    常に空なので、この経路だけが引用先・RT元の画像を得る手段になる。
+    複数画像でも本文に載るのは 1 枚目だけ。
+    """
+    text = tweet.get("full_text")
+    if not isinstance(text, str):
+        return []
+    return _TEXT_MEDIA_RE.findall(text)
+
+
 def extract_photo_urls(tweet):
     """ツイート本体と引用・リツイート先から photo の URL を重複なしで集める。"""
     urls = []
@@ -56,9 +77,11 @@ def extract_photo_urls(tweet):
         if isinstance(nested, dict):
             targets.append(nested)
     for target in targets:
-        for entry in _iter_media_entries(target):
-            url = _pick_image_url(entry)
-            if url and url not in seen:
+        found = [url for url in (_pick_image_url(e) for e in _iter_media_entries(target)) if url]
+        if not found:
+            found = _media_urls_from_text(target)
+        for url in found:
+            if url not in seen:
                 seen.add(url)
                 urls.append(url)
     return urls

@@ -71,6 +71,7 @@
                                     <ContextMenu>
                                         <MenuItem Header="更新 (差分取得)..." Click="MenuSearchUpdate_Click" />
                                         <MenuItem Header="過去期間を取得 (バックフィル)..." Click="MenuSearchBackfill_Click" />
+                                        <MenuItem Header="不足画像を取得 (API 不使用)" Click="MenuFetchImages_Click" />
                                         <Separator />
                                         <MenuItem Header="タグ" SubmenuOpened="TagMenu_SubmenuOpened">
                                             <!-- 子が空だと SubmenuOpened が発火しないためのプレースホルダ -->
@@ -133,6 +134,7 @@
                                 <ContextMenu>
                                     <MenuItem Header="更新 (差分取得)" Click="MenuUpdate_Click" />
                                     <MenuItem Header="全期間を取得 (バックフィル)..." Click="MenuBackfill_Click" />
+                                    <MenuItem Header="不足画像を取得 (API 不使用)" Click="MenuFetchImages_Click" />
                                     <Separator />
                                     <MenuItem Header="タグ" SubmenuOpened="TagMenu_SubmenuOpened">
                                         <!-- 子が空だと SubmenuOpened が発火しないためのプレースホルダ -->
@@ -329,6 +331,25 @@
                                             </StackPanel>
                                             <TextBlock behaviors:LinkifiedTextBehavior.Text="{Binding QuotedText}"
                                                        TextWrapping="Wrap" FontSize="13" Margin="0,2,0,0" />
+                                            <!-- 引用先の画像 (本文より小さめ) -->
+                                            <ItemsControl ItemsSource="{Binding QuotedImagePaths}" Margin="0,6,0,0"
+                                                          Visibility="{Binding HasQuotedImages, Converter={StaticResource BoolToVis}}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border CornerRadius="8" Margin="0,0,6,6" MaxHeight="180"
+                                                                MaxWidth="260" Background="#F0F0F0">
+                                                            <Image behaviors:ImagePathBehavior.Path="{Binding}"
+                                                                   behaviors:ImagePathBehavior.DecodeWidth="260"
+                                                                   Stretch="Uniform" StretchDirection="DownOnly" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                         </StackPanel>
                                     </Border>
 

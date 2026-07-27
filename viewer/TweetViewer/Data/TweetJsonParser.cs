@@ -170,16 +170,35 @@ public static partial class TweetJsonParser
 
         foreach (var (target, origin) in targets)
         {
-            foreach (var entry in IterMediaEntries(target))
+            var found = IterMediaEntries(target).Select(PickImageUrl).OfType<string>().ToList();
+            if (found.Count == 0)
+                found = MediaUrlsFromText(target);
+            foreach (var url in found)
             {
-                var url = PickImageUrl(entry);
-                if (url is null || !seen.Add(url))
+                if (!seen.Add(url))
                     continue;
                 result.Add(new TweetMediaRow(tweetId, result.Count + 1, url, ExtOf(url), origin));
             }
         }
         return result;
     }
+
+    /// <summary>
+    /// entities が空のときのフォールバック(media._media_urls_from_text と同一規則)。
+    /// 入れ子の quoted_status / retweeted_status は API 実挙動として entities が常に空で、
+    /// Sorsa が本文の t.co を展開済み URL にするためここから 1 枚目だけ拾える。
+    /// </summary>
+    private static List<string> MediaUrlsFromText(JsonElement tweet)
+    {
+        if (GetString(tweet, "full_text") is not { Length: > 0 } text)
+            return [];
+        return TextMediaRegex().Matches(text).Select(m => m.Value).ToList();
+    }
+
+    // 末尾の句読点を巻き込まないよう media キー・拡張子・クエリまでを厳密に区切る
+    [GeneratedRegex(@"https?://pbs\.twimg\.com/media/[A-Za-z0-9_\-]+" +
+                    @"(?:\.(?:jpg|jpeg|png|webp|gif))?(?:\?[A-Za-z0-9_=&%.\-]*)?")]
+    private static partial Regex TextMediaRegex();
 
     private static IEnumerable<JsonElement> IterMediaEntries(JsonElement tweet)
     {

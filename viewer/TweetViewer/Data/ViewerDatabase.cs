@@ -10,7 +10,7 @@ namespace TweetViewer.Data;
 /// </summary>
 public sealed class ViewerDatabase
 {
-    public const int SchemaVersion = 5;
+    public const int SchemaVersion = 6;
 
     /// <summary>
     /// tweets テーブルの DDL。EnsureCreated と v5 マイグレーション (DROP→CREATE) で共用。
@@ -142,7 +142,7 @@ public sealed class ViewerDatabase
 
             CREATE INDEX IF NOT EXISTS ix_user_tags_tag ON user_tags(tag_id);
 
-            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '5');
+            INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '6');
             """;
         cmd.ExecuteNonQuery();
 
@@ -188,6 +188,12 @@ public sealed class ViewerDatabase
                 """;
             cmd5.ExecuteNonQuery();
             tx.Commit();
+        }
+        if (stored < 6)
+        {
+            // DDL 変更なし。引用先・RT元の画像を full_text から拾えるようパーサを
+            // 変えたので、派生データを捨てて次回取込で作り直す (API 消費なし)。
+            Migrate(conn, 6, "");
         }
     }
 

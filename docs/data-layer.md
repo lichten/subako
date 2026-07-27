@@ -84,6 +84,11 @@ data/
   `in_reply_to_tweet_id`, `in_reply_to_username`, `lang`,
   `reply_count`, `retweet_count`, `likes_count`, `view_count`,
   `entities`(**配列**: `[{"type":"photo","link":..., "preview":...}]`)。
+- **API 実挙動の注意**: 入れ子の `quoted_status.entities` / `retweeted_status.entities` は
+  **常に空配列**で返る(全アーカイブ 40,046 ツイートで非空の行が 0 件)。
+  一方 `full_text` 内の t.co は展開済みの `https://pbs.twimg.com/media/...` になるため、
+  引用先・RT元の画像はそこからしか得られない(§3 のフォールバック規則)。
+  ただし本文に載るのは**複数画像でも 1 枚目だけ**。
 - 種別判定(排他、この優先順): `retweeted_status` 非 null → **RT** /
   `is_reply` true または `in_reply_to_tweet_id` 非 null → **Reply** /
   `is_quote_status` true または `quoted_status` 非 null → **Quote** / それ以外 → **Tweet**。
@@ -99,6 +104,13 @@ data/
   URL 重複を除いた順序。
 - エンティティ列挙: `entities` が配列ならその要素で `type ∈ {photo, image}`、
   dict なら `entities.media`、加えて `extended_entities.media` / `extendedEntities.media`。
+- **full_text フォールバック**: ある対象のエンティティ列挙が 1 件も URL を返さなかった場合に限り、
+  その対象の `full_text` から
+  `https?://pbs\.twimg\.com/media/[A-Za-z0-9_\-]+(\.(jpg|jpeg|png|webp|gif))?(\?[A-Za-z0-9_=&%.\-]*)?`
+  に一致する URL を列挙順に採用する(末尾の句読点を巻き込まないため厳密に区切る)。
+  入れ子の entities が常に空という API 実挙動 (§2) に対応するための規則で、
+  引用先 = `origin=1` / RT元 = `origin=2` の行はこの経路で作られる。
+  実装は `media._media_urls_from_text` と `TweetJsonParser.MediaUrlsFromText` の両方 (規則を揃えること)。
 - URL 選択: `preview, media_url_https, media_url, url, link, expanded_url` の
   非空文字列のうち `pbs.twimg.com` を含むものを優先、なければ先頭。
 - `<ext>`: pbs.twimg.com の URL はパス末尾の `\.(\w{3,4})$`、なければ
