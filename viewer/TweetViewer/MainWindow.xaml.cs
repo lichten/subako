@@ -17,7 +17,7 @@ public partial class MainWindow : Window
         RestoreWindowPlacement();
     }
 
-    /// <summary>前回終了時のウィンドウ配置を復元する。画面外 (モニタ構成変更) なら既定のまま。</summary>
+    /// <summary>前回終了時のウィンドウ配置とサイドバー幅を復元する。画面外 (モニタ構成変更) なら既定のまま。</summary>
     private void RestoreWindowPlacement()
     {
         if (_settings is { WindowLeft: { } left, WindowTop: { } top,
@@ -36,6 +36,8 @@ public partial class MainWindow : Window
         // 通常時の矩形を先に適用しておくことで、最大化解除時に前回サイズへ戻る
         if (_settings.WindowMaximized)
             WindowState = WindowState.Maximized;
+        if (_settings.SidebarWidth is { } sidebarWidth && sidebarWidth > 0)
+            SidebarColumn.Width = new GridLength(sidebarWidth);
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -53,6 +55,8 @@ public partial class MainWindow : Window
         }
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
         _settings.UnreadOnly = Vm.UnreadOnly;
+        if (SidebarColumn.ActualWidth > 0)
+            _settings.SidebarWidth = SidebarColumn.ActualWidth;
         _settings.Save();
         base.OnClosing(e);
     }

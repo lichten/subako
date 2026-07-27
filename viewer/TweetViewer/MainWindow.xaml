@@ -30,8 +30,11 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260" />
-            <ColumnDefinition Width="*" />
+            <!-- MinWidth: これより狭いとユーザー行の Auto 列 (アイコン/バッジ/更新ボタン) に
+                 押されて名前が潰れる。GridSplitter が両側の Min/MaxWidth を尊重する -->
+            <ColumnDefinition x:Name="SidebarColumn" Width="260" MinWidth="180" MaxWidth="600" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" MinWidth="320" />
         </Grid.ColumnDefinitions>
 
         <!-- サイドバー: ユーザー一覧 -->
@@ -196,8 +199,14 @@
             </ListBox>
         </DockPanel>
 
+        <!-- サイドバー幅のドラッグ変更 -->
+        <GridSplitter Grid.Row="0" Grid.Column="1" Width="5"
+                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      Background="#E1E8ED" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                      ToolTip="ドラッグしてサイドバーの幅を変更" />
+
         <!-- コンテンツ: ツールバー + ツイートリスト -->
-        <DockPanel Grid.Row="0" Grid.Column="1">
+        <DockPanel Grid.Row="0" Grid.Column="2">
             <ToolBarTray DockPanel.Dock="Top">
                 <ToolBar>
                     <RadioButton Content="タイムライン" GroupName="ViewMode" Padding="8,2"
@@ -411,7 +420,7 @@
         </DockPanel>
 
         <!-- ステータスバー -->
-        <StatusBar Grid.Row="1" Grid.ColumnSpan="2">
+        <StatusBar Grid.Row="1" Grid.ColumnSpan="3">
             <StatusBarItem>
                 <TextBlock Text="{Binding StatusText}" />
             </StatusBarItem>

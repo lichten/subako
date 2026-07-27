@@ -25,6 +25,9 @@ public sealed class AppSettings
     /// <summary>前回終了時の「未読のみ」フィルタの状態。</summary>
     public bool UnreadOnly { get; set; }
 
+    /// <summary>前回終了時のサイドバー幅 (null = 未保存で既定 260)。</summary>
+    public double? SidebarWidth { get; set; }
+
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "TweetViewer", "settings.json");
