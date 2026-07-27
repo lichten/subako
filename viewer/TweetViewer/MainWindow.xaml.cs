@@ -20,8 +20,11 @@ public partial class MainWindow : Window
     /// <summary>前回終了時のウィンドウ配置とサイドバー幅を復元する。画面外 (モニタ構成変更) なら既定のまま。</summary>
     private void RestoreWindowPlacement()
     {
-        if (_settings is { WindowLeft: { } left, WindowTop: { } top,
-                           WindowWidth: { } width, WindowHeight: { } height }
+        if (_settings is
+            {
+                WindowLeft: { } left, WindowTop: { } top,
+                WindowWidth: { } width, WindowHeight: { } height
+            }
             && width > 0 && height > 0
             && left < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth
             && top < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight

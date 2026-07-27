@@ -52,10 +52,16 @@ public sealed class QuotedImageTests : IAsyncDisposable
 
     private static TweetRow QuoteRow(string tweetId, string? quotedText) => new()
     {
-        TweetId = tweetId, IdInt = long.Parse(tweetId), Username = "alice",
-        AuthorUsername = "alice", CreatedAtUtc = "2026-07-21T20:23:54+00:00",
-        SortKey = 1, Type = TweetType.Quote, FullText = "outer",
-        QuotedUsername = "bob", QuotedText = quotedText,
+        TweetId = tweetId,
+        IdInt = long.Parse(tweetId),
+        Username = "alice",
+        AuthorUsername = "alice",
+        CreatedAtUtc = "2026-07-21T20:23:54+00:00",
+        SortKey = 1,
+        Type = TweetType.Quote,
+        FullText = "outer",
+        QuotedUsername = "bob",
+        QuotedText = quotedText,
     };
 
     [Fact]

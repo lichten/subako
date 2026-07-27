@@ -39,11 +39,20 @@ public sealed class CountsTextTests : IAsyncDisposable
     {
         var row = new TweetRow
         {
-            TweetId = "1", IdInt = 1, Username = "alice", AuthorUsername = "alice",
-            CreatedAtUtc = "2026-07-27T00:00:00+00:00", SortKey = 1, Type = type,
-            FullText = "x", RtText = type == TweetType.Retweet ? "元の全文" : null,
+            TweetId = "1",
+            IdInt = 1,
+            Username = "alice",
+            AuthorUsername = "alice",
+            CreatedAtUtc = "2026-07-27T00:00:00+00:00",
+            SortKey = 1,
+            Type = type,
+            FullText = "x",
+            RtText = type == TweetType.Retweet ? "元の全文" : null,
             RtUsername = type == TweetType.Retweet ? "bob" : null,
-            ReplyCount = reply, RetweetCount = rt, LikeCount = like, ViewCount = view,
+            ReplyCount = reply,
+            RetweetCount = rt,
+            LikeCount = like,
+            ViewCount = view,
         };
         var list = new TweetListViewModel(
             _db, new TweetRepository(_db), _readQueue, new IconCache(_dataDir));

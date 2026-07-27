@@ -143,9 +143,14 @@ public sealed class AddAuthorFromTweetTests : IAsyncDisposable
         // 通常ツイート → 実投稿者
         var normal = CreateItem(list, new TweetRow
         {
-            TweetId = "1", IdInt = 1, Username = "searches/kw-x", AuthorUsername = "someone",
-            CreatedAtUtc = "2026-07-21T20:23:54+00:00", SortKey = 1,
-            Type = TweetType.Tweet, FullText = "t",
+            TweetId = "1",
+            IdInt = 1,
+            Username = "searches/kw-x",
+            AuthorUsername = "someone",
+            CreatedAtUtc = "2026-07-21T20:23:54+00:00",
+            SortKey = 1,
+            Type = TweetType.Tweet,
+            FullText = "t",
         });
         Assert.Equal("someone", normal.AddableAuthorUsername);
         Assert.True(normal.CanAddAuthor);
@@ -153,19 +158,28 @@ public sealed class AddAuthorFromTweetTests : IAsyncDisposable
         // RT → RT元の作者
         var rt = CreateItem(list, new TweetRow
         {
-            TweetId = "2", IdInt = 2, Username = "alice", AuthorUsername = "alice",
+            TweetId = "2",
+            IdInt = 2,
+            Username = "alice",
+            AuthorUsername = "alice",
             RtUsername = "original",
-            CreatedAtUtc = "2026-07-21T20:23:54+00:00", SortKey = 2,
-            Type = TweetType.Retweet, FullText = "RT @original: t",
+            CreatedAtUtc = "2026-07-21T20:23:54+00:00",
+            SortKey = 2,
+            Type = TweetType.Retweet,
+            FullText = "RT @original: t",
         });
         Assert.Equal("original", rt.AddableAuthorUsername);
 
         // author 列がない旧バケットデータ → 追加不可 (Username はバケット ID)
         var legacy = CreateItem(list, new TweetRow
         {
-            TweetId = "3", IdInt = 3, Username = "searches/kw-x",
-            CreatedAtUtc = "2026-07-21T20:23:54+00:00", SortKey = 3,
-            Type = TweetType.Tweet, FullText = "t",
+            TweetId = "3",
+            IdInt = 3,
+            Username = "searches/kw-x",
+            CreatedAtUtc = "2026-07-21T20:23:54+00:00",
+            SortKey = 3,
+            Type = TweetType.Tweet,
+            FullText = "t",
         });
         Assert.Null(legacy.AddableAuthorUsername);
         Assert.False(legacy.CanAddAuthor);
@@ -173,9 +187,14 @@ public sealed class AddAuthorFromTweetTests : IAsyncDisposable
         // MenuItem Header の _ エスケープ
         var underscore = CreateItem(list, new TweetRow
         {
-            TweetId = "4", IdInt = 4, Username = "alice", AuthorUsername = "some_user",
-            CreatedAtUtc = "2026-07-21T20:23:54+00:00", SortKey = 4,
-            Type = TweetType.Tweet, FullText = "t",
+            TweetId = "4",
+            IdInt = 4,
+            Username = "alice",
+            AuthorUsername = "some_user",
+            CreatedAtUtc = "2026-07-21T20:23:54+00:00",
+            SortKey = 4,
+            Type = TweetType.Tweet,
+            FullText = "t",
         });
         Assert.Equal("@some__user をユーザーに追加", underscore.AddAuthorMenuHeader);
     }

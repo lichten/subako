@@ -61,12 +61,19 @@ public sealed class LinkThumbnailTests : IAsyncDisposable
     private static TweetRow Row(
         string tweetId, string fullText, string? quotedText = null, TweetType type = TweetType.Tweet,
         string? rtText = null) => new()
-    {
-        TweetId = tweetId, IdInt = long.Parse(tweetId), Username = "alice",
-        AuthorUsername = "alice", CreatedAtUtc = "2026-07-27T00:00:00+00:00", SortKey = 1,
-        Type = type, FullText = fullText, RtText = rtText,
-        QuotedUsername = quotedText is null ? null : "bob", QuotedText = quotedText,
-    };
+        {
+            TweetId = tweetId,
+            IdInt = long.Parse(tweetId),
+            Username = "alice",
+            AuthorUsername = "alice",
+            CreatedAtUtc = "2026-07-27T00:00:00+00:00",
+            SortKey = 1,
+            Type = type,
+            FullText = fullText,
+            RtText = rtText,
+            QuotedUsername = quotedText is null ? null : "bob",
+            QuotedText = quotedText,
+        };
 
     [Fact]
     public async Task BodyVideoLinkGetsThumbnail()
