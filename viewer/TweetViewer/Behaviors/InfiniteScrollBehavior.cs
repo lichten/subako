@@ -56,12 +56,24 @@ public sealed class InfiniteScrollBehavior : Behavior<ListBox>
     {
         if (_scrollViewer is null)
             return;
-        var remaining = _scrollViewer.ExtentHeight - (_scrollViewer.VerticalOffset + _scrollViewer.ViewportHeight);
-        if (remaining < _scrollViewer.ViewportHeight * 2 &&
-            LoadMoreCommand is { } cmd && cmd.CanExecute(null))
-        {
+        if (!ShouldLoadMore(_scrollViewer.ExtentHeight, _scrollViewer.VerticalOffset,
+                _scrollViewer.ViewportHeight))
+            return;
+        if (LoadMoreCommand is { } cmd && cmd.CanExecute(null))
             cmd.Execute(null);
-        }
+    }
+
+    /// <summary>
+    /// 末尾まで残り2画面を切ったら true。
+    /// リストが空のとき (リセット直後の Clear と項目追加の間) は残りが負になって
+    /// 必ず条件が成立してしまうため、明示的に除外する — ここで追加ロードが走ると
+    /// リセット中の表示位置が乱れる。
+    /// </summary>
+    public static bool ShouldLoadMore(double extentHeight, double verticalOffset, double viewportHeight)
+    {
+        if (extentHeight <= 0 || viewportHeight <= 0)
+            return false;
+        return extentHeight - (verticalOffset + viewportHeight) < viewportHeight * 2;
     }
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject

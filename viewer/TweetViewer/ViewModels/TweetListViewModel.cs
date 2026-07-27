@@ -98,7 +98,14 @@ public sealed partial class TweetListViewModel : ObservableObject
         }
         finally
         {
-            _loading = false;
+            // 自分より新しいリセットが始まっていたら、_loading は後発 (force:true で
+            // 入ってきた側) の所有物なので触らない。横取り解除すると、リセット中に
+            // 余計な追加ロードが割り込んで表示位置が乱れる
+            // 自分より新しいリセットが始まっていたら、_loading は後発 (force:true で
+            // 入ってきた側) の所有物なので触らない。横取り解除すると、リセット中に
+            // 余計な追加ロードが割り込んで表示位置が乱れる
+            if (version == _resetVersion)
+                _loading = false;
         }
     }
 

@@ -163,6 +163,58 @@ public sealed class SearchBucketDisplayTests : IAsyncDisposable
         Assert.Equal("9001", vm.TweetList.Items[0].TweetId);
     });
 
+    /// <summary>
+    /// リセット中に追加ロードが割り込んでも項目が重複しないという不変条件のテスト。
+    /// InfiniteScrollBehavior がリセット直後に LoadMoreCommand を発火する状況を模す。
+    /// 注: _loading の横取り解除 (LoadMoreCoreAsync の finally) はこのテストでは
+    /// 再現できない — AsyncRelayCommand が同一コマンドの同時実行を抑止するため、
+    /// 実アプリの ScrollChanged 連打と同じ並びにはならない。ここで守れるのは
+    /// 「リセットと追加ロードが混ざっても重複しない」という粗い不変条件まで。
+    /// </summary>
+    [Fact]
+    public void LoadMoreDuringReset_DoesNotDuplicateItems() => RunOnDispatcher(async () =>
+    {
+        var users = new UserRepository(_db);
+        var importer = new JsonlImporter(_db);
+        await users.AddAsync("alice");
+        var lines = new StringBuilder();
+        for (var i = 1; i <= 300; i++)   // PageSize=200 を超える = HasMore が true になる
+            lines.Append($$"""{"id":"{{i}}","created_at":"Tue Jul 21 20:23:54 +0000 2026","full_text":"tweet {{i}}","entities":[]}""" + "\n");
+        Directory.CreateDirectory(_db.UserDir("alice"));
+        File.AppendAllText(_db.JsonlPath("alice"), lines.ToString(), new UTF8Encoding(false));
+        await importer.ImportUserAsync("alice");
+
+        var settings = new AppSettings { RepoDir = _dataDir, DataDir = _dataDir };
+        var vm = new MainViewModel(
+            _db, users, new TweetRepository(_db), new TagRepository(_db), importer, _readQueue,
+            new FetchProcessService(settings), new IconCache(_dataDir));
+        await vm.RefreshUsersAsync();
+        var alice = vm.Users.Single(u => u.Username == "alice");
+
+        // 二重リセット + その最中に ScrollChanged 相当の追加ロードを何度も差し込む
+        vm.SelectedUser = alice;
+        vm.SelectedUser = null;
+        vm.SelectedUser = alice;
+        for (var i = 0; i < 10; i++)
+        {
+            vm.TweetList.LoadMoreCommand.Execute(null);
+            await Task.Yield();
+        }
+
+        await WaitForItemsAsync(vm);
+        for (var i = 0; i < 60; i++)
+        {
+            await Task.Delay(50);
+            if (vm.TweetList.Items.Count is 200 or 300)
+                break;
+        }
+
+        // 同じツイートが二重に積まれていないこと (件数はロードが何ページ進んだかで変わる)
+        var ids = vm.TweetList.Items.Select(x => x.TweetId).ToList();
+        Assert.Equal(ids.Count, ids.Distinct().Count());
+        Assert.InRange(ids.Count, 200, 300);
+    });
+
     [Fact]
     public async Task ResetAsyncWithBucketIdLoadsItems()
     {
