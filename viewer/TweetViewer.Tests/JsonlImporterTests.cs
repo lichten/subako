@@ -106,18 +106,18 @@ public sealed class JsonlImporterTests : IDisposable
         var tweets = new TweetRepository(_db);
         await tweets.SetReadAsync("10", "carol", read: true);
 
-        var page = await tweets.GetPageAsync("carol", unreadOnly: false, after: null, limit: 10);
+        var page = await tweets.GetPageAsync(["carol"], unreadOnly: false, after: null, limit: 10);
         Assert.Equal(2, page.Rows.Count);
         Assert.Contains(page.Rows, r => r.TweetId == "10" && r.IsRead);
 
         var rebuilt = await importer.RebuildUserAsync("carol");
         Assert.Equal(2, rebuilt.NewTweets);
 
-        var after = await tweets.GetPageAsync("carol", unreadOnly: false, after: null, limit: 10);
+        var after = await tweets.GetPageAsync(["carol"], unreadOnly: false, after: null, limit: 10);
         Assert.Contains(after.Rows, r => r.TweetId == "10" && r.IsRead);
         Assert.Contains(after.Rows, r => r.TweetId == "11" && !r.IsRead);
 
-        var unreadOnly = await tweets.GetPageAsync("carol", unreadOnly: true, after: null, limit: 10);
+        var unreadOnly = await tweets.GetPageAsync(["carol"], unreadOnly: true, after: null, limit: 10);
         Assert.Single(unreadOnly.Rows);
         Assert.Equal("11", unreadOnly.Rows[0].TweetId);
     }
@@ -153,11 +153,11 @@ public sealed class JsonlImporterTests : IDisposable
         await importer.ImportUserAsync("erin");
 
         var tweets = new TweetRepository(_db);
-        var page1 = await tweets.GetPageAsync("erin", false, null, 2);
+        var page1 = await tweets.GetPageAsync(["erin"], false, null, 2);
         Assert.Equal(new[] { "3", "2" }, page1.Rows.Select(r => r.TweetId));
 
         var last = page1.Rows[^1];
-        var page2 = await tweets.GetPageAsync("erin", false, (last.SortKey, last.IdInt), 2);
+        var page2 = await tweets.GetPageAsync(["erin"], false, (last.SortKey, last.IdInt), 2);
         Assert.Equal(new[] { "1" }, page2.Rows.Select(r => r.TweetId));
     }
 
@@ -179,15 +179,15 @@ public sealed class JsonlImporterTests : IDisposable
         await importer.ImportUserAsync("grace");
 
         var tweets = new TweetRepository(_db);
-        var page = await tweets.GetMediaPageAsync("grace", after: null, limit: 10);
+        var page = await tweets.GetMediaPageAsync(["grace"], after: null, limit: 10);
         // 本文画像のみ・新しい順・同一ツイート内は idx 昇順
         Assert.Equal(new[] { ("4", 1), ("4", 2), ("3", 1) },
             page.Select(m => (m.TweetId, m.Idx)));
 
         // keyset ページング (limit 2 → 続き)
-        var p1 = await tweets.GetMediaPageAsync("grace", null, 2);
+        var p1 = await tweets.GetMediaPageAsync(["grace"], null, 2);
         var last = p1[^1];
-        var p2 = await tweets.GetMediaPageAsync("grace", (last.SortKey, last.IdInt, last.Idx), 2);
+        var p2 = await tweets.GetMediaPageAsync(["grace"], (last.SortKey, last.IdInt, last.Idx), 2);
         Assert.Equal(new[] { ("4", 1), ("4", 2) }, p1.Select(m => (m.TweetId, m.Idx)));
         Assert.Equal(new[] { ("3", 1) }, p2.Select(m => (m.TweetId, m.Idx)));
     }
@@ -212,7 +212,7 @@ public sealed class JsonlImporterTests : IDisposable
 
         // author 列には実投稿者が入る
         var tweets = new TweetRepository(_db);
-        var page = await tweets.GetPageAsync("searches/kw-12345678", false, null, 10);
+        var page = await tweets.GetPageAsync(["searches/kw-12345678"], false, null, 10);
         Assert.Equal("someone", page.Rows.Single().AuthorUsername);
         Assert.Equal("Someone Else", page.Rows.Single().AuthorDisplayName);
     }
@@ -276,7 +276,7 @@ public sealed class JsonlImporterTests : IDisposable
 
         // raw_offset/raw_length で元の行を正確に切り出せること
         var tweets = new TweetRepository(_db);
-        var page = await tweets.GetPageAsync("frank", false, null, 10);
+        var page = await tweets.GetPageAsync(["frank"], false, null, 10);
         var row1 = page.Rows.Single(r => r.TweetId == "1");
         using var stream = File.OpenRead(_db.JsonlPath("frank"));
         stream.Seek(row1.RawOffset, SeekOrigin.Begin);

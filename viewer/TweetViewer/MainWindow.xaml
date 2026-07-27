@@ -57,6 +57,11 @@
                     Content="表示中をすべて更新..." Click="UpdateAllVisible_Click"
                     IsEnabled="{Binding IsFetching, Converter={StaticResource InverseBool}}"
                     ToolTip="サイドバーに表示中のユーザーと検索を上から順に差分更新します(合計リクエスト数の上限を指定)" />
+            <!-- 統合タイムライン (SelectedUser / SelectedSearch と相互排他の第 3 の選択状態) -->
+            <ToggleButton DockPanel.Dock="Top" Margin="8,0,8,6" Padding="4,3"
+                          IsChecked="{Binding IsAllTimeline}"
+                          Content="統合タイムライン (すべて)"
+                          ToolTip="サイドバーに表示中のユーザーと検索をすべて混ぜた時系列表示" />
             <!-- 検索セクション (保存済み API 検索) -->
             <DockPanel DockPanel.Dock="Bottom" MaxHeight="220">
                 <DockPanel DockPanel.Dock="Top" Margin="8,4">

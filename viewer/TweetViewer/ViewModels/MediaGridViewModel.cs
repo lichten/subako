@@ -36,7 +36,7 @@ public sealed partial class MediaGridViewModel : ObservableObject
     private readonly ViewerDatabase _db;
     private readonly TweetRepository _repo;
 
-    private string? _username;
+    private IReadOnlyList<string> _usernames = [];
     private (long SortKey, long IdInt, int Idx)? _cursor;
     private bool _loading;
     private int _resetVersion;
@@ -55,15 +55,16 @@ public sealed partial class MediaGridViewModel : ObservableObject
         _repo = repo;
     }
 
-    public async Task ResetAsync(string? username)
+    /// <summary>表示対象を差し替える。usernames が複数なら統合表示 (時系列にマージ)。</summary>
+    public async Task ResetAsync(IReadOnlyList<string> usernames)
     {
         var version = ++_resetVersion;
-        _username = username;
+        _usernames = usernames;
         _cursor = null;
         Rows.Clear();
         FlatItems.Clear();
-        HasMore = username is not null;
-        if (username is not null)
+        HasMore = usernames.Count > 0;
+        if (usernames.Count > 0)
             await LoadMoreCoreAsync(version);
     }
 
@@ -72,24 +73,31 @@ public sealed partial class MediaGridViewModel : ObservableObject
 
     private async Task LoadMoreCoreAsync(int version)
     {
-        if (_loading || !HasMore || _username is not { } username)
+        if (_loading || !HasMore || _usernames.Count == 0)
             return;
+        var usernames = _usernames;
         _loading = true;
         try
         {
-            var page = await _repo.GetMediaPageAsync(username, _cursor, PageSize);
+            var page = await _repo.GetMediaPageAsync(usernames, _cursor, PageSize);
             if (version != _resetVersion)
                 return;
 
-            var imagesDir = _db.ImagesDir(username);
+            // 画像ファイルはアーカイブごとの images/ に入っているため行の username で解決する
+            var imagesDirs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var items = await Task.Run(() => page
-                .Select(r => new MediaItemViewModel
+                .Select(r =>
                 {
-                    TweetId = r.TweetId,
-                    Username = username,
-                    LocalPath = LocalMediaFiles.Resolve(imagesDir, r.TweetId, r.Idx, r.Ext),
-                    FullText = r.FullText,
-                    CreatedAtUtc = r.CreatedAtUtc,
+                    if (!imagesDirs.TryGetValue(r.Username, out var imagesDir))
+                        imagesDirs[r.Username] = imagesDir = _db.ImagesDir(r.Username);
+                    return new MediaItemViewModel
+                    {
+                        TweetId = r.TweetId,
+                        Username = r.Username,
+                        LocalPath = LocalMediaFiles.Resolve(imagesDir, r.TweetId, r.Idx, r.Ext),
+                        FullText = r.FullText,
+                        CreatedAtUtc = r.CreatedAtUtc,
+                    };
                 })
                 .ToList());
             if (version != _resetVersion)

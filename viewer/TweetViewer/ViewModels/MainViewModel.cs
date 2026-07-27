@@ -51,6 +51,13 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private SearchItemViewModel? _selectedSearch;
 
+    /// <summary>
+    /// 統合タイムライン (表示中のユーザー・検索をすべて混ぜた時系列)。
+    /// SelectedUser / SelectedSearch と相互排他の第 3 の選択状態。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isAllTimeline;
+
     [ObservableProperty]
     private bool _unreadOnly;
 
@@ -112,7 +119,7 @@ public sealed partial class MainViewModel : ObservableObject
         await RefreshSearchesAsync();
         StatusText = "準備完了";
 
-        if (SelectedUser is null && SelectedSearch is null && Users.Count > 0)
+        if (SelectedUser is null && SelectedSearch is null && !IsAllTimeline && Users.Count > 0)
             SelectedUser = Users[0];
     }
 
@@ -161,6 +168,12 @@ public sealed partial class MainViewModel : ObservableObject
     {
         UsersView.Refresh();
         SearchesView.Refresh();
+        // 統合表示は「表示中の集合」がフィルタで変わるため作り直す
+        if (IsAllTimeline)
+        {
+            _ = ResetListAsync();
+            return;
+        }
         // 選択中の項目がフィルタで消えたら表示中の先頭ユーザーを選択 (空ペイン回避)
         if (SelectedUser is not null && !FilterUser(SelectedUser))
             SelectedUser = UsersView.Cast<UserItemViewModel>().FirstOrDefault();
@@ -266,10 +279,11 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnSelectedUserChanged(UserItemViewModel? value)
     {
         // ユーザーと検索は相互排他 (null 代入の連鎖ループを避けるため非 null 遷移時のみ相手を消す)
-        if (value is not null && SelectedSearch is not null)
+        if (value is not null && (SelectedSearch is not null || IsAllTimeline))
         {
             _switchingSelection = true;
             SelectedSearch = null;
+            IsAllTimeline = false;
             _switchingSelection = false;
         }
         if (!_switchingSelection)
@@ -278,14 +292,35 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnSelectedSearchChanged(SearchItemViewModel? value)
     {
-        if (value is not null && SelectedUser is not null)
+        if (value is not null && (SelectedUser is not null || IsAllTimeline))
         {
             _switchingSelection = true;
             SelectedUser = null;
+            IsAllTimeline = false;
             _switchingSelection = false;
         }
         if (!_switchingSelection)
             _ = ResetListAsync();
+    }
+
+    partial void OnIsAllTimelineChanged(bool value)
+    {
+        if (value)
+        {
+            // 統合表示に入る: 個別選択を外す (サイドバーのハイライトも消える)
+            _switchingSelection = true;
+            SelectedUser = null;
+            SelectedSearch = null;
+            _switchingSelection = false;
+            _ = ResetListAsync();
+        }
+        else if (!_switchingSelection)
+        {
+            // トグルを手動でオフ → 空ペイン回避で表示中の先頭ユーザーへ (既存の流儀)
+            SelectedUser = UsersView.Cast<UserItemViewModel>().FirstOrDefault();
+            if (SelectedUser is null)
+                _ = ResetListAsync();
+        }
     }
 
     partial void OnUnreadOnlyChanged(bool value) => _ = ResetListAsync();
@@ -294,16 +329,35 @@ public sealed partial class MainViewModel : ObservableObject
 
     private Task ResetListAsync()
     {
+        if (IsAllTimeline)
+        {
+            // 表示中 (タグフィルタ適用後) のスナップショット。列挙中の Refresh は例外になる
+            var archives = VisibleArchives();
+            return IsMediaView
+                ? MediaGrid.ResetAsync(archives.Select(a => a.Username).ToList())
+                : TweetList.ResetAsync(archives, UnreadOnly);
+        }
         if (SelectedSearch is { } search)
             return IsMediaView
-                ? MediaGrid.ResetAsync(search.Username)
-                : TweetList.ResetAsync(search.Username, search.Label, null, UnreadOnly);
+                ? MediaGrid.ResetAsync([search.Username])
+                : TweetList.ResetAsync([new ArchiveInfo(search.Username, search.Label, null)], UnreadOnly);
+        if (SelectedUser is { } user)
+            return IsMediaView
+                ? MediaGrid.ResetAsync([user.Username])
+                : TweetList.ResetAsync(
+                    [new ArchiveInfo(user.Username, user.DisplayName, user.IconUrl)], UnreadOnly);
         return IsMediaView
-            ? MediaGrid.ResetAsync(SelectedUser?.Username)
-            : TweetList.ResetAsync(
-                SelectedUser?.Username, SelectedUser?.DisplayName ?? "",
-                SelectedUser?.IconUrl, UnreadOnly);
+            ? MediaGrid.ResetAsync([])
+            : TweetList.ResetAsync([], UnreadOnly);
     }
+
+    /// <summary>統合タイムラインの対象 = サイドバーに表示中のユーザーと検索 (表示順)。</summary>
+    private List<ArchiveInfo> VisibleArchives() =>
+        UsersView.Cast<UserItemViewModel>()
+            .Select(u => new ArchiveInfo(u.Username, u.DisplayName, u.IconUrl))
+            .Concat(SearchesView.Cast<SearchItemViewModel>()
+                .Select(s => new ArchiveInfo(s.Username, s.Label, null)))
+            .ToList();
 
     private void OnUnreadDelta(string username, long delta)
     {
@@ -381,8 +435,12 @@ public sealed partial class MainViewModel : ObservableObject
         StatusText = $"{username}: 新規 {result.NewTweets:N0}件を取込";
         await RefreshUsersAsync();
         await RefreshSearchesAsync();
-        if (string.Equals(SelectedUser?.Username, username, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(SelectedSearch?.Username, username, StringComparison.OrdinalIgnoreCase))
+        var affectsCurrent =
+            string.Equals(SelectedUser?.Username, username, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(SelectedSearch?.Username, username, StringComparison.OrdinalIgnoreCase) ||
+            (IsAllTimeline && VisibleArchives().Any(a =>
+                string.Equals(a.Username, username, StringComparison.OrdinalIgnoreCase)));
+        if (affectsCurrent)
             await ResetListAsync();
     }
 
@@ -477,7 +535,10 @@ public sealed partial class MainViewModel : ObservableObject
         var error = await RemoveArchiveAsync(item.Username, deleteFiles);
         await RefreshUsersAsync();
         await RefreshTagsAsync();
-        SelectedUser ??= UsersView.Cast<UserItemViewModel>().FirstOrDefault();
+        if (IsAllTimeline)
+            await ResetListAsync();   // 統合表示は維持したまま削除分を反映
+        else
+            SelectedUser ??= UsersView.Cast<UserItemViewModel>().FirstOrDefault();
         StatusText = error ?? $"@{item.Username} を削除しました" +
             (deleteFiles ? "" : $" (データは {ArchiveTrash.TrashDirName} に退避)");
         return error;
@@ -491,7 +552,10 @@ public sealed partial class MainViewModel : ObservableObject
         var error = await RemoveArchiveAsync(item.Username, deleteFiles);
         await RefreshSearchesAsync();
         await RefreshTagsAsync();
-        SelectedUser ??= UsersView.Cast<UserItemViewModel>().FirstOrDefault();
+        if (IsAllTimeline)
+            await ResetListAsync();   // 統合表示は維持したまま削除分を反映
+        else
+            SelectedUser ??= UsersView.Cast<UserItemViewModel>().FirstOrDefault();
         StatusText = error ?? $"検索「{item.Label}」を削除しました" +
             (deleteFiles ? "" : $" (データは {ArchiveTrash.TrashDirName} に退避)");
         return error;

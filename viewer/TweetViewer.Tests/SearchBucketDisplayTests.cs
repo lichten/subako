@@ -232,7 +232,7 @@ public sealed class SearchBucketDisplayTests : IAsyncDisposable
 
         var list = new TweetListViewModel(
             _db, new TweetRepository(_db), _readQueue, new IconCache(_dataDir));
-        await list.ResetAsync(bucket, "クエリ表示名", null, unreadOnly: false);
+        await list.ResetAsync([new ArchiveInfo(bucket, "クエリ表示名", null)], unreadOnly: false);
 
         Assert.Equal(2, list.Items.Count);
         Assert.Equal("2", list.Items[0].TweetId);

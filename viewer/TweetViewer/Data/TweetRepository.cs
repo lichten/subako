@@ -3,11 +3,18 @@ using TweetViewer.Models;
 
 namespace TweetViewer.Data;
 
-public sealed record TweetPage(IReadOnlyList<TweetRow> Rows, IReadOnlyDictionary<string, List<TweetMediaRow>> Media);
+/// <summary>
+/// タイムライン1ページ分。ArchivesByTweetId は複数アーカイブに存在する tweet_id のみを持つ
+/// (既読化時に該当する全アーカイブの未読数を減らすため。表示中でないアーカイブも含む)。
+/// </summary>
+public sealed record TweetPage(
+    IReadOnlyList<TweetRow> Rows,
+    IReadOnlyDictionary<string, List<TweetMediaRow>> Media,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> ArchivesByTweetId);
 
 public sealed record MediaPageRow(
     string TweetId, int Idx, string Ext, long SortKey, long IdInt,
-    string FullText, string CreatedAtUtc);
+    string FullText, string CreatedAtUtc, string Username);
 
 public sealed class TweetRepository
 {
@@ -15,35 +22,76 @@ public sealed class TweetRepository
 
     public TweetRepository(ViewerDatabase db) => _db = db;
 
-    /// <summary>keyset pagination。after が null なら先頭ページ。</summary>
+    /// <summary>
+    /// keyset pagination。after が null なら先頭ページ。
+    /// 複数アーカイブを混ぜる場合、同一 tweet_id はアーカイブと検索バケットの両方に
+    /// 存在しうる (PK は (username, tweet_id)) ため、窓関数で LIMIT より前に重複排除する。
+    /// 代表は実ユーザーアーカイブ優先 (searches/ は劣後)。
+    /// LIMIT を dedup の後に置くことで「Rows.Count == limit ⇔ まだ残りがある」の
+    /// 既存の意味論 (HasMore 判定) が保たれる。
+    /// sort_key / id_int は created_at と tweet id から決定的に導出されるため
+    /// 重複コピー間で必ず一致し、カーソル条件・unreadOnly はパーティション単位で
+    /// 丸ごと効く (代表の選択やページ境界を歪めない)。
+    /// </summary>
     public Task<TweetPage> GetPageAsync(
-        string username, bool unreadOnly, (long SortKey, long IdInt)? after, int limit,
+        IReadOnlyList<string> usernames, bool unreadOnly, (long SortKey, long IdInt)? after, int limit,
         CancellationToken ct = default)
     {
+        if (usernames.Count == 0)
+        {
+            return Task.FromResult(new TweetPage(
+                [], new Dictionary<string, List<TweetMediaRow>>(),
+                new Dictionary<string, IReadOnlyList<string>>()));
+        }
         return Task.Run(() =>
         {
             using var conn = _db.OpenConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT t.tweet_id, t.id_int, t.username, t.created_at_utc, t.sort_key,
-                       t.tweet_type, t.full_text, t.lang, t.in_reply_to_username,
-                       t.rt_username, t.rt_display_name, t.rt_text,
-                       t.quoted_username, t.quoted_display_name, t.quoted_text,
-                       t.like_count, t.retweet_count, t.reply_count, t.view_count,
-                       t.media_count, t.raw_offset, t.raw_length,
-                       t.rt_icon_url, t.quoted_icon_url,
-                       t.author_username, t.author_display_name, t.author_icon_url,
-                       (r.tweet_id IS NOT NULL) AS is_read
-                FROM tweets t
-                LEFT JOIN read_state r ON r.tweet_id = t.tweet_id
-                WHERE t.username = $u
+            var inList = BindInList(cmd, "$u", usernames);
+            const string columns = """
+                t.tweet_id, t.id_int, t.username, t.created_at_utc, t.sort_key,
+                t.tweet_type, t.full_text, t.lang, t.in_reply_to_username,
+                t.rt_username, t.rt_display_name, t.rt_text,
+                t.quoted_username, t.quoted_display_name, t.quoted_text,
+                t.like_count, t.retweet_count, t.reply_count, t.view_count,
+                t.media_count, t.raw_offset, t.raw_length,
+                t.rt_icon_url, t.quoted_icon_url,
+                t.author_username, t.author_display_name, t.author_icon_url,
+                (r.tweet_id IS NOT NULL) AS is_read
+                """;
+            const string filters = """
                   AND ($unreadOnly = 0 OR r.tweet_id IS NULL)
                   AND ($noCursor = 1 OR t.sort_key < $sk
                        OR (t.sort_key = $sk AND t.id_int < $idi))
-                ORDER BY t.sort_key DESC, t.id_int DESC
-                LIMIT $limit
                 """;
-            cmd.Parameters.AddWithValue("$u", username);
+            // 単一アーカイブは PK (username, tweet_id) により重複しないため、
+            // 窓関数を通さず ix_tweets_user_sort の索引ストリームで返す
+            // (dankogai 規模で 250ms → 数ms の差が毎ページ効く)
+            cmd.CommandText = usernames.Count == 1
+                ? $"""
+                  SELECT {columns}
+                  FROM tweets t
+                  LEFT JOIN read_state r ON r.tweet_id = t.tweet_id
+                  WHERE t.username = $u0
+                  {filters}
+                  ORDER BY t.sort_key DESC, t.id_int DESC
+                  LIMIT $limit
+                  """
+                : $"""
+                  SELECT * FROM (
+                      SELECT {columns},
+                             ROW_NUMBER() OVER (
+                                 PARTITION BY t.tweet_id
+                                 ORDER BY (t.username LIKE 'searches/%'), t.username) AS rn
+                      FROM tweets t
+                      LEFT JOIN read_state r ON r.tweet_id = t.tweet_id
+                      WHERE t.username IN ({inList})
+                      {filters}
+                  )
+                  WHERE rn = 1
+                  ORDER BY sort_key DESC, id_int DESC
+                  LIMIT $limit
+                  """;
             cmd.Parameters.AddWithValue("$unreadOnly", unreadOnly ? 1 : 0);
             cmd.Parameters.AddWithValue("$noCursor", after is null ? 1 : 0);
             cmd.Parameters.AddWithValue("$sk", after?.SortKey ?? 0);
@@ -91,8 +139,56 @@ public sealed class TweetRepository
             }
 
             var media = LoadMedia(conn, rows.Where(r => r.MediaCount > 0).Select(r => r.TweetId).ToList());
-            return new TweetPage(rows, media);
+            var archives = LoadDuplicateArchives(conn, rows.Select(r => r.TweetId).ToList());
+            return new TweetPage(rows, media, archives);
         }, ct);
+    }
+
+    /// <summary>
+    /// ページ内 tweet_id ごとに、それを含む全アーカイブの username を引く。
+    /// read_state は tweet_id 単位で全アーカイブ共通のため、既読化は表示中でない
+    /// アーカイブ (タグフィルタで隠れている等) の未読数も実際に減らす。
+    /// そのため表示中集合では絞らない。辞書には 2 アーカイブ以上に存在するものだけ載せる。
+    /// </summary>
+    private static Dictionary<string, IReadOnlyList<string>> LoadDuplicateArchives(
+        SqliteConnection conn, IReadOnlyList<string> tweetIds)
+    {
+        var result = new Dictionary<string, IReadOnlyList<string>>();
+        if (tweetIds.Count == 0)
+            return result;
+
+        using var cmd = conn.CreateCommand();
+        var inList = BindInList(cmd, "$id", tweetIds);
+        cmd.CommandText =
+            $"SELECT tweet_id, username FROM tweets WHERE tweet_id IN ({inList}) ORDER BY tweet_id";
+        var all = new Dictionary<string, List<string>>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var tweetId = reader.GetString(0);
+            if (!all.TryGetValue(tweetId, out var list))
+                all[tweetId] = list = new List<string>();
+            list.Add(reader.GetString(1));
+        }
+        foreach (var (tweetId, list) in all)
+        {
+            if (list.Count > 1)
+                result[tweetId] = list;
+        }
+        return result;
+    }
+
+    /// <summary>IN 句のパラメータを動的にバインドし、"$p0,$p1,..." を返す。</summary>
+    private static string BindInList(SqliteCommand cmd, string prefix, IReadOnlyList<string> values)
+    {
+        var names = new List<string>(values.Count);
+        for (var i = 0; i < values.Count; i++)
+        {
+            var name = $"{prefix}{i}";
+            names.Add(name);
+            cmd.Parameters.AddWithValue(name, values[i]);
+        }
+        return string.Join(",", names);
     }
 
     private static Dictionary<string, List<TweetMediaRow>> LoadMedia(
@@ -129,31 +225,56 @@ public sealed class TweetRepository
     /// <summary>
     /// メディア欄用: 本人の投稿画像のみ (origin=0、RT 除外) を新しい順に。
     /// keyset カーソルは (sort_key, id_int, idx) の3要素。
+    /// 重複排除は GetPageAsync と同じ理由・同じ規則で、パーティションは (tweet_id, idx)
+    /// (tweet_id だけだと複数枚画像が 1 枚に潰れる)。
     /// </summary>
     public Task<List<MediaPageRow>> GetMediaPageAsync(
-        string username, (long SortKey, long IdInt, int Idx)? after, int limit,
+        IReadOnlyList<string> usernames, (long SortKey, long IdInt, int Idx)? after, int limit,
         CancellationToken ct = default)
     {
+        if (usernames.Count == 0)
+            return Task.FromResult(new List<MediaPageRow>());
         return Task.Run(() =>
         {
             using var conn = _db.OpenConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT m.tweet_id, m.idx, m.ext, t.sort_key, t.id_int,
-                       t.full_text, t.created_at_utc
-                FROM tweet_media m
-                JOIN tweets t ON t.tweet_id = m.tweet_id
-                WHERE t.username = $u
+            var inList = BindInList(cmd, "$u", usernames);
+            const string filters = """
                   AND m.origin = 0
                   AND t.tweet_type != 1
                   AND ($noCursor = 1
                        OR t.sort_key < $sk
                        OR (t.sort_key = $sk AND t.id_int < $ii)
                        OR (t.sort_key = $sk AND t.id_int = $ii AND m.idx > $ix))
-                ORDER BY t.sort_key DESC, t.id_int DESC, m.idx ASC
-                LIMIT $limit
                 """;
-            cmd.Parameters.AddWithValue("$u", username);
+            // 単一アーカイブは重複しないため窓関数を通らない (GetPageAsync と同じ理由)
+            cmd.CommandText = usernames.Count == 1
+                ? $"""
+                  SELECT m.tweet_id, m.idx, m.ext, t.sort_key, t.id_int,
+                         t.full_text, t.created_at_utc, t.username
+                  FROM tweet_media m
+                  JOIN tweets t ON t.tweet_id = m.tweet_id
+                  WHERE t.username = $u0
+                  {filters}
+                  ORDER BY t.sort_key DESC, t.id_int DESC, m.idx ASC
+                  LIMIT $limit
+                  """
+                : $"""
+                  SELECT * FROM (
+                      SELECT m.tweet_id, m.idx, m.ext, t.sort_key, t.id_int,
+                             t.full_text, t.created_at_utc, t.username,
+                             ROW_NUMBER() OVER (
+                                 PARTITION BY m.tweet_id, m.idx
+                                 ORDER BY (t.username LIKE 'searches/%'), t.username) AS rn
+                      FROM tweet_media m
+                      JOIN tweets t ON t.tweet_id = m.tweet_id
+                      WHERE t.username IN ({inList})
+                      {filters}
+                  )
+                  WHERE rn = 1
+                  ORDER BY sort_key DESC, id_int DESC, idx ASC
+                  LIMIT $limit
+                  """;
             cmd.Parameters.AddWithValue("$noCursor", after is null ? 1 : 0);
             cmd.Parameters.AddWithValue("$sk", after?.SortKey ?? 0);
             cmd.Parameters.AddWithValue("$ii", after?.IdInt ?? 0);
@@ -172,7 +293,8 @@ public sealed class TweetRepository
                     SortKey: reader.GetInt64(3),
                     IdInt: reader.GetInt64(4),
                     FullText: reader.GetString(5),
-                    CreatedAtUtc: reader.GetString(6)));
+                    CreatedAtUtc: reader.GetString(6),
+                    Username: reader.GetString(7)));
             }
             return rows;
         }, ct);
