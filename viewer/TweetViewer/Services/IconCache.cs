@@ -8,9 +8,10 @@ using System.Text.RegularExpressions;
 namespace TweetViewer.Services;
 
 /// <summary>
-/// ユーザーアイコンのダウンロードとディスクキャッシュ。
-/// キャッシュ先は data/icons/&lt;sha1(url)&gt;.&lt;ext&gt; (プラットフォームフリー、
+/// URL 指定の画像のダウンロードとディスクキャッシュ。
+/// キャッシュ先は data/&lt;subDirectory&gt;/&lt;sha1(url)&gt;.&lt;ext&gt; (プラットフォームフリー、
 /// 消しても再取得可能な派生データ — docs/data-layer.md 参照)。
+/// 既定はユーザーアイコン用の icons/、動画サムネイルは thumbnails/ を使う。
 /// </summary>
 public sealed partial class IconCache
 {
@@ -19,18 +20,25 @@ public sealed partial class IconCache
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
-    private readonly string _iconsDir;
+    private readonly string _cacheDir;
     private readonly ConcurrentDictionary<string, Lazy<Task<string?>>> _inflight = new();
     private readonly ConcurrentDictionary<string, byte> _failed = new();   // セッション内ネガティブキャッシュ
 
-    public IconCache(string dataDir)
+    public IconCache(string dataDir, string subDirectory = "icons")
     {
-        _iconsDir = Path.Combine(dataDir, "icons");
-        Directory.CreateDirectory(_iconsDir);
+        _cacheDir = Path.Combine(dataDir, subDirectory);
+        Directory.CreateDirectory(_cacheDir);
     }
 
     /// <summary>ローカルキャッシュのパスを返す。未取得ならダウンロード。失敗は null。</summary>
-    public Task<string?> GetLocalPathAsync(string? url)
+    /// <param name="url">キャッシュのキー。既定では取得先 URL も兼ねる。</param>
+    /// <param name="resolveDownloadUrl">
+    /// キャッシュミス時に実際の取得先 URL を解決する処理 (null なら url をそのまま使う)。
+    /// キャッシュのファイル名は url から決まるので、解決結果が毎回変わってもヒットする。
+    /// ニコニコのようにサムネイル URL を API で引く必要がある場合に使う。
+    /// </summary>
+    public Task<string?> GetLocalPathAsync(
+        string? url, Func<string, Task<string?>>? resolveDownloadUrl = null)
     {
         if (string.IsNullOrEmpty(url) || _failed.ContainsKey(url))
             return Task.FromResult<string?>(null);
@@ -41,19 +49,28 @@ public sealed partial class IconCache
 
         // 同一 URL の並行要求は1ダウンロードに束ねる
         var lazy = _inflight.GetOrAdd(url, u => new Lazy<Task<string?>>(
-            () => DownloadAsync(u, CachePathFor(u)),
+            () => DownloadAsync(u, CachePathFor(u), resolveDownloadUrl),
             LazyThreadSafetyMode.ExecutionAndPublication));
         return lazy.Value;
     }
 
-    private async Task<string?> DownloadAsync(string url, string path)
+    private async Task<string?> DownloadAsync(
+        string url, string path, Func<string, Task<string?>>? resolveDownloadUrl)
     {
         try
         {
+            var target = resolveDownloadUrl is null
+                ? url
+                : await resolveDownloadUrl(url).ConfigureAwait(false);
+            if (target is null)
+            {
+                _failed.TryAdd(url, 0);
+                return null;
+            }
             // _normal (48px) を _bigger (73px) に置換して取得。404 なら元 URL で再試行
-            var bigger = NormalSuffixRegex().Replace(url, "_bigger$1");
+            var bigger = NormalSuffixRegex().Replace(target, "_bigger$1");
             var bytes = await TryGetBytesAsync(bigger).ConfigureAwait(false)
-                        ?? (bigger != url ? await TryGetBytesAsync(url).ConfigureAwait(false) : null);
+                        ?? (bigger != target ? await TryGetBytesAsync(target).ConfigureAwait(false) : null);
             if (bytes is null)
             {
                 _failed.TryAdd(url, 0);
@@ -95,10 +112,11 @@ public sealed partial class IconCache
         }
     }
 
-    private string CachePathFor(string url)
+    /// <summary>この URL のキャッシュ先パス (未取得でも算出できる。テストの事前配置にも使う)。</summary>
+    public string CachePathFor(string url)
     {
         var hash = Convert.ToHexStringLower(SHA1.HashData(Encoding.UTF8.GetBytes(url)));
         var ext = Data.TweetJsonParser.ExtOf(url);
-        return Path.Combine(_iconsDir, $"{hash}.{ext}");
+        return Path.Combine(_cacheDir, $"{hash}.{ext}");
     }
 }

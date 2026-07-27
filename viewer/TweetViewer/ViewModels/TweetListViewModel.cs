@@ -15,6 +15,8 @@ public sealed partial class TweetListViewModel : ObservableObject
     private readonly TweetRepository _repo;
     private readonly ReadMarkQueue _readQueue;
     private readonly IconCache _iconCache;
+    /// <summary>動画リンクのサムネイル用 (data/thumbnails/。アイコンとは別ディレクトリ)。</summary>
+    private readonly IconCache _thumbnailCache;
 
     private string? _username;
     private string _displayName = "";
@@ -39,6 +41,7 @@ public sealed partial class TweetListViewModel : ObservableObject
         _repo = repo;
         _readQueue = readQueue;
         _iconCache = iconCache;
+        _thumbnailCache = new IconCache(db.DataDir, "thumbnails");
     }
 
     public async Task ResetAsync(string? username, string displayName, string? ownerIconUrl, bool unreadOnly)
@@ -79,7 +82,7 @@ public sealed partial class TweetListViewModel : ObservableObject
                 .Select(row => new TweetItemViewModel(
                     this, row,
                     page.Media.TryGetValue(row.TweetId, out var m) ? m : Array.Empty<TweetMediaRow>(),
-                    imagesDir, displayName, ownerIconUrl, _iconCache))
+                    imagesDir, displayName, ownerIconUrl, _iconCache, _thumbnailCache))
                 .ToList());
             if (version != _resetVersion)
                 return;

@@ -285,6 +285,13 @@ public partial class MainWindow : Window
             MessageBox.Show(error, "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
+    /// <summary>動画リンクのサムネイルをクリックしたら動画ページをブラウザで開く。</summary>
+    private void LinkThumbnail_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: LinkThumbnailViewModel item })
+            Browser.OpenUrl(item.PageUrl);
+    }
+
     private void MediaCell_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: MediaItemViewModel item })

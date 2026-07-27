@@ -352,6 +352,28 @@
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
+                                            <!-- 引用先本文の動画リンクのサムネイル -->
+                                            <ItemsControl ItemsSource="{Binding QuotedLinkThumbnails}" Margin="0,6,0,0"
+                                                          Visibility="{Binding HasQuotedLinkThumbnails, Converter={StaticResource BoolToVis}}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type vm:LinkThumbnailViewModel}">
+                                                        <Border CornerRadius="8" Margin="0,0,6,6" MaxHeight="135"
+                                                                MaxWidth="240" Background="#F0F0F0" Cursor="Hand"
+                                                                ToolTip="{Binding PageUrl}"
+                                                                MouseLeftButtonUp="LinkThumbnail_Click"
+                                                                Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}}">
+                                                            <Image behaviors:ImagePathBehavior.Path="{Binding ThumbnailPath}"
+                                                                   behaviors:ImagePathBehavior.DecodeWidth="240"
+                                                                   Stretch="Uniform" StretchDirection="DownOnly" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                         </StackPanel>
                                     </Border>
 
@@ -368,6 +390,29 @@
                                                 <Border CornerRadius="8" Margin="0,0,6,6" MaxHeight="280"
                                                         MaxWidth="400" Background="#F0F0F0">
                                                     <Image behaviors:ImagePathBehavior.Path="{Binding}"
+                                                           Stretch="Uniform" StretchDirection="DownOnly" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- 動画リンクのサムネイル (YouTube / ニコニコ動画) -->
+                                    <ItemsControl ItemsSource="{Binding LinkThumbnails}" Margin="0,6,0,0"
+                                                  Visibility="{Binding HasLinkThumbnails, Converter={StaticResource BoolToVis}}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:LinkThumbnailViewModel}">
+                                                <Border CornerRadius="8" Margin="0,0,6,6" MaxHeight="180"
+                                                        MaxWidth="320" Background="#F0F0F0" Cursor="Hand"
+                                                        ToolTip="{Binding PageUrl}"
+                                                        MouseLeftButtonUp="LinkThumbnail_Click"
+                                                        Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}}">
+                                                    <Image behaviors:ImagePathBehavior.Path="{Binding ThumbnailPath}"
+                                                           behaviors:ImagePathBehavior.DecodeWidth="320"
                                                            Stretch="Uniform" StretchDirection="DownOnly" />
                                                 </Border>
                                             </DataTemplate>

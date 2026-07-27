@@ -87,4 +87,99 @@ public class LinkifierTests
     {
         Assert.Empty(Linkifier.Split(""));
     }
+
+    private const string YtThumb = "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg";
+
+    [Theory]
+    // YouTube の各種 URL 形式 (Sorsa は t.co を展開済みで本文に入れる)
+    [InlineData("https://youtu.be/dQw4w9WgXcQ", YtThumb)]
+    [InlineData("https://www.youtube.com/watch?v=dQw4w9WgXcQ", YtThumb)]
+    [InlineData("https://youtube.com/watch?v=dQw4w9WgXcQ", YtThumb)]
+    [InlineData("https://m.youtube.com/watch?v=dQw4w9WgXcQ", YtThumb)]
+    [InlineData("http://www.youtube.com/watch?v=dQw4w9WgXcQ", YtThumb)]
+    // v= の前後に他のクエリが付く形
+    [InlineData("https://www.youtube.com/watch?feature=share&v=dQw4w9WgXcQ", YtThumb)]
+    [InlineData("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s", YtThumb)]
+    [InlineData("https://www.youtube.com/shorts/dQw4w9WgXcQ", YtThumb)]
+    [InlineData("https://www.youtube.com/live/dQw4w9WgXcQ", YtThumb)]
+    [InlineData("https://www.youtube.com/embed/dQw4w9WgXcQ", YtThumb)]
+    [InlineData("https://youtu.be/dQw4w9WgXcQ?t=30", YtThumb)]
+    // ニコニコ動画 (sm/nm/so と短縮 URL)。サムネイルは数字部のみを使う
+    [InlineData("https://www.nicovideo.jp/watch/sm2455666",
+        "https://nicovideo.cdn.nimg.jp/thumbnails/2455666/2455666")]
+    [InlineData("https://nicovideo.jp/watch/nm10171192",
+        "https://nicovideo.cdn.nimg.jp/thumbnails/10171192/10171192")]
+    [InlineData("https://nico.ms/so12345",
+        "https://nicovideo.cdn.nimg.jp/thumbnails/12345/12345")]
+    [InlineData("https://www.nicovideo.jp/watch/sm9?ref=x",
+        "https://nicovideo.cdn.nimg.jp/thumbnails/9/9")]
+    public void ExtractVideoLinks_BuildsThumbnailUrl(string url, string expectedThumbnail)
+    {
+        var links = Linkifier.ExtractVideoLinks($"動画です {url} どうぞ");
+        var link = Assert.Single(links);
+        Assert.Equal(url, link.PageUrl);
+        Assert.Equal(expectedThumbnail, link.ThumbnailUrl);
+    }
+
+    [Theory]
+    [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnop")]      // 動画ではない
+    [InlineData("https://www.youtube.com/@somechannel")]
+    [InlineData("https://www.youtube.com/watch?v=short")]                   // ID が 11 文字未満
+    [InlineData("https://youtu.be/tooLongVideoId123")]                      // ID が 11 文字超
+    [InlineData("https://www.nicovideo.jp/user/12345")]                     // 動画ではない
+    [InlineData("https://live.nicovideo.jp/watch/lv12345")]                 // 生放送は対象外
+    [InlineData("https://example.com/watch?v=dQw4w9WgXcQ")]                 // 別ホスト
+    [InlineData("https://notyoutube.com/watch?v=dQw4w9WgXcQ")]
+    public void ExtractVideoLinks_IgnoresNonVideoUrls(string url)
+    {
+        Assert.Empty(Linkifier.ExtractVideoLinks($"見て {url} ね"));
+    }
+
+    [Theory]
+    // URL の直後に空白なしで日本語が続くケース (Split の約物除去は末尾が空白のときだけ効くため、
+    // ページ URL は正規表現のマッチ範囲から作る必要がある)
+    [InlineData("これ https://youtu.be/dQw4w9WgXcQ。おすすめ", "https://youtu.be/dQw4w9WgXcQ")]
+    [InlineData("これ https://youtu.be/dQw4w9WgXcQ.です", "https://youtu.be/dQw4w9WgXcQ")]
+    [InlineData("これ https://youtu.be/dQw4w9WgXcQ、と", "https://youtu.be/dQw4w9WgXcQ")]
+    [InlineData("末尾 https://youtu.be/dQw4w9WgXcQ。", "https://youtu.be/dQw4w9WgXcQ")]
+    // クエリ付きは保持する (再生位置を失わない)
+    [InlineData("時間指定 https://youtu.be/dQw4w9WgXcQ?t=30 から",
+        "https://youtu.be/dQw4w9WgXcQ?t=30")]
+    public void ExtractVideoLinks_PageUrlExcludesSurroundingText(string text, string expectedPageUrl)
+    {
+        var link = Assert.Single(Linkifier.ExtractVideoLinks(text));
+        Assert.Equal(expectedPageUrl, link.PageUrl);
+        Assert.Equal(YtThumb, link.ThumbnailUrl);
+    }
+
+    [Fact]
+    public void ExtractVideoLinks_DedupesSameVideoAndKeepsOrder()
+    {
+        var links = Linkifier.ExtractVideoLinks(
+            "https://youtu.be/dQw4w9WgXcQ と https://www.youtube.com/watch?v=dQw4w9WgXcQ と " +
+            "https://www.nicovideo.jp/watch/sm9");
+        Assert.Equal(2, links.Count);
+        Assert.Equal(YtThumb, links[0].ThumbnailUrl);
+        Assert.Equal("https://nicovideo.cdn.nimg.jp/thumbnails/9/9", links[1].ThumbnailUrl);
+    }
+
+    [Fact]
+    public void ExtractVideoLinks_NicoCarriesVideoNumberForApiResolution()
+    {
+        // ニコニコの CDN URL は番号だけでは決まらない (新しい動画はサフィックス付き) ので、
+        // 取得時に getthumbinfo で解決できるよう番号を持ち回る
+        var nico = Assert.Single(Linkifier.ExtractVideoLinks("https://www.nicovideo.jp/watch/sm36810714"));
+        Assert.Equal("36810714", nico.NicoVideoNumber);
+
+        var yt = Assert.Single(Linkifier.ExtractVideoLinks("https://youtu.be/dQw4w9WgXcQ"));
+        Assert.Null(yt.NicoVideoNumber);
+    }
+
+    [Fact]
+    public void ExtractVideoLinks_EmptyOrNullText()
+    {
+        Assert.Empty(Linkifier.ExtractVideoLinks(null));
+        Assert.Empty(Linkifier.ExtractVideoLinks(""));
+        Assert.Empty(Linkifier.ExtractVideoLinks("リンクのない本文"));
+    }
 }

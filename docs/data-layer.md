@@ -141,6 +141,36 @@ data/
   `_normal` → `_bigger` に置換した URL を優先し、404 なら元 URL でフォールバック
 - **派生データ**: 消しても再取得できる。全プラットフォームのビューアで共有可
 
+### 3.6 動画リンクのサムネイルキャッシュ (`data/thumbnails/`)
+
+本文中の動画リンクのサムネイル。`data/icons/` と同じ実装 (`Services/IconCache.cs`、
+コンストラクタの `subDirectory` 引数で保存先を分けている) で、ファイル名も
+`<sha1(サムネイルURL) の小文字hex>.<ext>` と同規則。**派生データ**なので消して構わない。
+
+`tweet_media` には載せない。§3 の連番 `idx` は Python と C# の共有契約であり、
+ビューア側だけで行を挿すと既存画像のファイル名解決が壊れるため。抽出は表示時に
+`Services/Linkifier.ExtractVideoLinks` が本文 (`DisplayText` / `QuotedText`) に対して行う。
+
+サムネイル URL は **API キーもスクレイピングも使わず URL から組み立てる**:
+
+| 対象 | 本文中の URL 形式 | サムネイル URL |
+|---|---|---|
+| YouTube | `youtu.be/<11文字ID>` / `youtube.com/watch?v=<ID>` / `shorts/` / `live/` / `embed/` (`www.` `m.` 付きも) | `https://i.ytimg.com/vi/<ID>/hqdefault.jpg` (URL から決定できる) |
+| ニコニコ動画 | `nicovideo.jp/watch/<sm\|nm\|so><数字>` / `nico.ms/<sm\|nm\|so><数字>` | **API 解決が必要** (下記) |
+
+- YouTube の `hqdefault` は常に存在する解像度。存在しない動画 ID は **404** が返るので
+  失敗として扱える (灰色の代替画像は返らない)
+- **ニコニコのサムネイル URL は番号からは決定できない**。
+  `https://nicovideo.cdn.nimg.jp/thumbnails/<数字>/<数字>` で取れるのは古い動画だけで、
+  新しい動画は `.../<数字>/<数字>.<別番号>` とサフィックスが付く (実データで確認)。
+  そのため鍵不要の公開 API `https://ext.nicovideo.jp/api/getthumbinfo/sm<数字>` の
+  `<thumbnail_url>` を使う (`Services/NicoThumbnail.cs`)。
+  **API を叩くのはキャッシュミス時のみ**で、キャッシュのキーはサフィックスなしの
+  決定的な URL を使う。API が失敗したときはそのキー URL 自体を取得先として試す
+  (古い動画はこれで取れる)。旧 `tn.smilevideo.jp` は廃止済み
+- ニュースサイト等は OpenGraph (`og:image`) の HTML 取得・解析が必要で、実アーカイブでは
+  リンク先が 2,600 以上のホストに分散するため対象外としている
+
 ## 4. viewer.db(SQLite)
 
 ### 4.1 権威規則(最重要)

@@ -181,7 +181,8 @@ public sealed class AddAuthorFromTweetTests : IAsyncDisposable
     }
 
     private TweetItemViewModel CreateItem(TweetListViewModel list, TweetRow row) =>
-        new(list, row, [], _dataDir, "owner", null, new IconCache(_dataDir));
+        new(list, row, [], _dataDir, "owner", null,
+            new IconCache(_dataDir), new IconCache(_dataDir, "thumbnails"));
 
     /// <summary>WPF の CollectionView (UsersView) が必要とする Dispatcher 上で非同期テスト本体を実行する。</summary>
     private static void RunOnDispatcher(Func<Task> asyncBody)

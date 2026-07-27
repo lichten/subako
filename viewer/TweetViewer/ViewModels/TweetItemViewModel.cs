@@ -30,9 +30,19 @@ public sealed partial class TweetItemViewModel : ObservableObject
     /// <summary>引用先ツイートの画像 (引用ブロック内に表示)。</summary>
     public IReadOnlyList<string> QuotedImagePaths { get; }
 
+    /// <summary>本文中の動画リンクのサムネイル (本文欄に表示)。</summary>
+    public IReadOnlyList<LinkThumbnailViewModel> LinkThumbnails { get; }
+
+    /// <summary>引用先本文の動画リンクのサムネイル (引用ブロック内に表示)。</summary>
+    public IReadOnlyList<LinkThumbnailViewModel> QuotedLinkThumbnails { get; }
+
+    public bool HasLinkThumbnails => LinkThumbnails.Count > 0;
+    public bool HasQuotedLinkThumbnails => QuotedLinkThumbnails.Count > 0;
+
     public TweetItemViewModel(
         TweetListViewModel owner, TweetRow row, IReadOnlyList<TweetMediaRow> media,
-        string imagesDir, string ownerDisplayName, string? ownerIconUrl, IconCache iconCache)
+        string imagesDir, string ownerDisplayName, string? ownerIconUrl, IconCache iconCache,
+        IconCache thumbnailCache)
     {
         _owner = owner;
         Row = row;
@@ -45,13 +55,40 @@ public sealed partial class TweetItemViewModel : ObservableObject
         ResolveIcon(iconCache, mainUrl, path => MainIconPath = path);
         if (IsQuote)
             ResolveIcon(iconCache, Row.QuotedIconUrl, path => QuotedIconPath = path);
+
+        // 同じ動画を本文と引用先の両方で参照していたら本文側だけに出す (画像の先勝ちと同じ規則)
+        var seenThumbnails = new HashSet<string>();
+        LinkThumbnails = CreateThumbnails(DisplayText, thumbnailCache, seenThumbnails);
+        QuotedLinkThumbnails = CreateThumbnails(QuotedText, thumbnailCache, seenThumbnails);
     }
 
-    private static async void ResolveIcon(IconCache cache, string? url, Action<string?> setter)
+    private static List<LinkThumbnailViewModel> CreateThumbnails(
+        string text, IconCache cache, HashSet<string> seen)
+    {
+        var result = new List<LinkThumbnailViewModel>();
+        foreach (var link in Linkifier.ExtractVideoLinks(text))
+        {
+            if (!seen.Add(link.ThumbnailUrl))
+                continue;
+            var vm = new LinkThumbnailViewModel(link.PageUrl);
+            // ニコニコはサムネイル URL を API で引く必要がある (キャッシュミス時のみ)
+            var resolver = link.NicoVideoNumber is { } number
+                ? new Func<string, Task<string?>>(
+                    fallback => NicoThumbnail.ResolveAsync(number, fallback))
+                : null;
+            ResolveIcon(cache, link.ThumbnailUrl, path => vm.ThumbnailPath = path, resolver);
+            result.Add(vm);
+        }
+        return result;
+    }
+
+    private static async void ResolveIcon(
+        IconCache cache, string? url, Action<string?> setter,
+        Func<string, Task<string?>>? resolveDownloadUrl = null)
     {
         try
         {
-            var path = await cache.GetLocalPathAsync(url);
+            var path = await cache.GetLocalPathAsync(url, resolveDownloadUrl);
             if (path is not null)
                 setter(path);
         }
