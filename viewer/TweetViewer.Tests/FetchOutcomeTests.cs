@@ -77,6 +77,48 @@ public class FetchOutcomeTests
     }
 
     [Fact]
+    public void 依存パッケージ未導入のヒントを出す()
+    {
+        var log = new[]
+        {
+            "Traceback (most recent call last):",
+            "  File \"main.py\", line 23, in <module>",
+            "ModuleNotFoundError: No module named 'requests'",
+        };
+
+        var hint = FetchOutcome.EnvironmentHint(log);
+
+        Assert.NotNull(hint);
+        Assert.Contains("pip install -r requirements.txt", hint);
+    }
+
+    [Fact]
+    public void APIキー未設定のヒントを出す()
+    {
+        var log = new[]
+        {
+            "2026-07-28 10:00:00,000 ERROR .env または環境変数に SORSA_API_KEY を設定してください",
+        };
+
+        var hint = FetchOutcome.EnvironmentHint(log);
+
+        Assert.NotNull(hint);
+        Assert.Contains("SORSA_API_KEY", hint);
+    }
+
+    [Fact]
+    public void 通常のログにはヒントを出さない()
+    {
+        var log = new[]
+        {
+            "2026-07-28 10:00:00,000 INFO [update] page=1 取得=20 新規=3",
+            "2026-07-28 10:00:01,000 INFO 完了: 新規保存=3件 / 総保存=100件 / APIリクエスト=1回 / 保存先=data\\alice",
+        };
+
+        Assert.Null(FetchOutcome.EnvironmentHint(log));
+    }
+
+    [Fact]
     public void 一括_全件成功はissueなし()
     {
         var (summary, hasIssues) = FetchOutcome.DescribeBatch(

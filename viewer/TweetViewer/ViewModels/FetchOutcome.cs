@@ -32,6 +32,22 @@ public static class FetchOutcome
             _ => ($"エラー終了 (exit code {result.ExitCode})", true),
         };
 
+    /// <summary>
+    /// 実行ログから典型的な環境不備を検出して案内文を返す (該当なしなら null)。
+    /// Python のトレースバックや fetcher のエラーログは初見では原因が読み取りにくいため、
+    /// 対処をひと言に翻訳する (docs/release-plan.md §2-2)。
+    /// </summary>
+    public static string? EnvironmentHint(IReadOnlyList<string> logLines)
+    {
+        if (logLines.Any(l => l.Contains("ModuleNotFoundError")))
+            return "Python の依存パッケージが未導入のようです。fetcher のフォルダで " +
+                   "pip install -r requirements.txt を実行してください";
+        if (logLines.Any(l => l.Contains("SORSA_API_KEY")))
+            return "Sorsa API キーが未設定のようです。fetcher のフォルダの .env に " +
+                   "SORSA_API_KEY を設定してください (.env.example 参照。キーは https://api.sorsa.io で取得)";
+        return null;
+    }
+
     /// <summary>一括取得のサマリ。HasIssues = 個別失敗あり、または途中停止 (中断・上限)。</summary>
     public static (string Summary, bool HasIssues) DescribeBatch(
         int succeeded, int total, int consumedTotal, IReadOnlyList<string> failed, string? stopReason)

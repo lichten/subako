@@ -4,8 +4,12 @@ using System.Text.Json;
 namespace TweetViewer;
 
 /// <summary>
-/// %APPDATA%\TweetViewer\settings.json。RepoDir 未設定時は exe 位置から
-/// main.py を持つ祖先ディレクトリを探索する(開発中は viewer/TweetViewer/bin/... 配下で動くため)。
+/// %APPDATA%\Subako\settings.json。RepoDir 未設定時は exe 位置から
+/// main.py を持つフォルダを探索する (exe 自身のフォルダから祖先へ順に見る)。
+/// これが効くのは 2 つの配置: 開発中 (viewer/TweetViewer/bin/... 配下で動くため
+/// 祖先にリポジトリがある) と、公開ビルド (fetcher 一式を exe と同じフォルダに
+/// 同梱する方針 — docs/release-plan.md §2-1。この場合は最初の判定で一致する)。
+/// どちらでもなければ空のままとなり、閲覧専用モードで動く。
 /// </summary>
 public sealed class AppSettings
 {

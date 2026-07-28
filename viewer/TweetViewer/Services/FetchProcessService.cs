@@ -109,7 +109,19 @@ public sealed class FetchProcessService
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) log.Report(e.Data); };
 
         log.Report($"> {psi.FileName} {string.Join(' ', psi.ArgumentList)}");
-        process.Start();
+        try
+        {
+            process.Start();
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            // Python 未導入の生メッセージ (「指定されたファイルが見つかりません」) では
+            // 何が悪いのか伝わらないため、原因と対処を明示する
+            throw new InvalidOperationException(
+                $"Python を起動できませんでした ({psi.FileName})。\n" +
+                "取得機能には Python 3 が必要です。https://www.python.org/ からインストールするか、" +
+                "「設定」で Python パスを指定してください。", ex);
+        }
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 

@@ -19,6 +19,9 @@ public sealed partial class FetchDialogViewModel : ObservableObject
     private readonly int? _maxRequests;
     private readonly CancellationTokenSource _cts = new();
 
+    /// <summary>ログから検出した環境不備の案内 (RunTargetAsync が設定)。</summary>
+    private string? _environmentHint;
+
     public ObservableCollection<string> LogLines { get; } = new();
 
     [ObservableProperty]
@@ -93,6 +96,8 @@ public sealed partial class FetchDialogViewModel : ObservableObject
         var target = _targets[0];
         var (result, _) = await RunTargetAsync(target, _maxRequests);
         (ResultText, HasIssues) = FetchOutcome.DescribeSingle(result, target.Mode);
+        if (_environmentHint is { } hint)
+            ResultText = $"{ResultText} — {hint}";
         // 失敗・中断でもページ毎に保存済みのため取込は実行する
         await _onCompleted(target.Username);
     }
@@ -183,6 +188,12 @@ public sealed partial class FetchDialogViewModel : ObservableObject
         var consumed = maxRequests is { } granted
             ? FetchBudget.ConsumedOrGranted(FetchBudget.ParseConsumedRequests(runLog), granted)
             : FetchBudget.ParseConsumedRequests(runLog) ?? 0;
+        if (result.ExitCode != 0 && !result.Cancelled &&
+            FetchOutcome.EnvironmentHint(runLog) is { } hint)
+        {
+            _environmentHint = hint;
+            LogLines.Add($"ヒント: {hint}");
+        }
         return (result, consumed);
     }
 

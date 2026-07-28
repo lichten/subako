@@ -1,0 +1,36 @@
+<Window x:Class="TweetViewer.Views.FirstRunDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        WindowStyle="ToolWindow">
+    <!-- Grid.Row は必ず明示する (省略すると全て行 0 に重なって描画される) -->
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="WelcomeText" TextWrapping="Wrap"
+                   Text="X (Twitter) のアーカイブをローカルに保存して閲覧するアプリです。はじめに、ツイートデータの保存先フォルダを選んでください。" />
+
+        <TextBlock Grid.Row="1" Text="データフォルダ:" Margin="0,12,0,0" />
+        <DockPanel Grid.Row="2" Margin="0,4,0,0">
+            <Button DockPanel.Dock="Right" Content="参照..." Padding="10,2" Margin="6,0,0,0"
+                    Click="Browse_Click" />
+            <TextBox x:Name="DataDirBox" VerticalContentAlignment="Center" />
+        </DockPanel>
+
+        <TextBlock Grid.Row="3" TextWrapping="Wrap" Foreground="#666" FontSize="12" Margin="0,8,0,0"
+                   Text="別の PC で取得済みのデータフォルダ (クラウド同期など) を選べば、そのまま閲覧できます。ツイートの取得機能 (Python と Sorsa API キーが必要) は、後から「設定」で構成できます。" />
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,16,0,0">
+            <Button Content="開始" Width="80" IsDefault="True" Click="Ok_Click" />
+            <Button Content="終了" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

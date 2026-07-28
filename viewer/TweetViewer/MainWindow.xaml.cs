@@ -55,7 +55,11 @@ public partial class MainWindow : Window
         var bounds = WindowState == WindowState.Normal
             ? new Rect(Left, Top, Width, Height)
             : RestoreBounds;
-        if (!bounds.IsEmpty)
+        // レイアウト前に閉じられると NaN/Infinity が入り、JSON に書けず保存全体が
+        // 例外で失敗する (初回起動フローの不具合で実際に発生した)。非有限値は保存しない
+        if (!bounds.IsEmpty &&
+            double.IsFinite(bounds.Left) && double.IsFinite(bounds.Top) &&
+            double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height))
         {
             _settings.WindowLeft = bounds.Left;
             _settings.WindowTop = bounds.Top;
@@ -210,12 +214,27 @@ public partial class MainWindow : Window
     private void StartFetch(string username, FetchMode mode, int? maxRequests,
         string? searchQuery = null, string? backfillSince = null)
     {
-        if (Vm.IsFetching)
+        if (Vm.IsFetching || !EnsureFetcherConfigured())
             return;
         var dialogVm = new FetchDialogViewModel(
             Vm.FetchService, username, Vm.OnFetchCompletedAsync, mode, maxRequests, searchQuery,
             backfillSince);
         LaunchFetch(dialogVm);
+    }
+
+    /// <summary>
+    /// 取得機能は fetcher (main.py) の場所が設定されているときだけ使える。
+    /// 未設定 = 閲覧専用モード。案内を出して false を返す (データ閲覧は妨げない)。
+    /// </summary>
+    private bool EnsureFetcherConfigured()
+    {
+        if (!string.IsNullOrWhiteSpace(_settings.RepoDir))
+            return true;
+        MessageBox.Show(
+            "取得機能を使うには fetcher (main.py のあるフォルダ) の場所が必要です。\n" +
+            "「設定」から指定してください。既存データの閲覧はこのまま使えます。",
+            AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Information);
+        return false;
     }
 
     /// <summary>
@@ -251,7 +270,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void UpdateAllVisible_Click(object sender, RoutedEventArgs e)
     {
-        if (Vm.IsFetching)
+        if (Vm.IsFetching || !EnsureFetcherConfigured())
             return;
         // 列挙中に Refresh() が走ると例外になるため、開始時にスナップショットを取る
         var users = Vm.UsersView.Cast<UserItemViewModel>().ToList();
@@ -285,7 +304,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async void ImportFollowings_Click(object sender, RoutedEventArgs e)
     {
-        if (Vm.IsFetching)
+        if (Vm.IsFetching || !EnsureFetcherConfigured())
             return;
         var dialog = new ImportFollowingsDialog(Vm.Tags) { Owner = this };
         if (dialog.ShowDialog() != true)
@@ -357,7 +376,9 @@ public partial class MainWindow : Window
 
     private async void AddSearch_Click(object sender, RoutedEventArgs e)
     {
-        if (Vm.IsFetching)
+        // StartFetch より先に検索バケットを作るため、fetcher 未設定はここで弾く
+        // (弾かないと空のバケットだけが残る)
+        if (Vm.IsFetching || !EnsureFetcherConfigured())
             return;
         var dialog = new SearchDialog { Owner = this };
         if (dialog.ShowDialog() != true)

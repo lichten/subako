@@ -118,32 +118,32 @@
 
 ### 2-1. 初回起動フローの作り直し (L)
 
-- [ ] `DetectRepoDir` 失敗 → エラーダイアログ → `Shutdown(1)` の流れを廃止する
+- [x] `DetectRepoDir` 失敗 → エラーダイアログ → `Shutdown(1)` の流れを廃止する (2026-07-28)
 
 現状 (`AppSettings.cs:71-82` / `App.xaml.cs:16-25`): exe の祖先ディレクトリから `main.py` を探し、見つからないと「`%APPDATA%\TweetViewer\settings.json` の RepoDir を設定してください」と表示して即終了する。これは「exe が git checkout の中にある」開発環境専用の仕組みで、公開ビルドでは必ず失敗する。しかも **RepoDir は設定ダイアログから編集できない** (`SettingsDialog` にあるのは DataDir と PythonPath だけ) ので、復旧手段が Notepad しかない。
 
-- [ ] 初回セットアップダイアログを新設する (データフォルダ選択 / Python パス / fetcher の場所、または「閲覧のみで始める」)
-- [ ] `RepoDir` を設定ダイアログから編集可能にする
-- [ ] fetcher (main.py 一式) の配布方法を決める — バイナリ配布物に `main.py` + `sorsa_fetcher/` + `requirements.txt` を同梱するのが簡単で、RepoDir 探索も「exe と同じフォルダ」を最初に見るよう変更できる
+- [x] 初回セットアップダイアログを新設 (`Views/FirstRunDialog`)。データフォルダの選択だけで閲覧を始められ、fetcher と Python は後から設定できる (2026-07-28)
+- [x] `RepoDir` を設定ダイアログから編集可能に (参照ボタン + main.py の存在検証つき) (2026-07-28)
+- [x] fetcher の配布方法を決める → **バイナリ配布物に `main.py` + `sorsa_fetcher/` + `requirements.txt` + `.env.example` を同梱する** (2026-07-28 決定)。既存の `DetectRepoDir` は exe 自身のフォルダを最初に見るため、同梱すれば自動検出される。publish への組み込みは 4-1 で実施
 
 ### 2-2. Python 未導入時の案内 (M)
 
-- [ ] Python が見つからないときに `Win32Exception` の生メッセージ (「指定されたファイルが見つかりません」) ではなく、「取得機能には Python 3.x が必要です + python.org へのリンク + PythonPath 設定の案内」を表示する
-- [ ] `requirements.txt` 未導入 (ModuleNotFoundError) の検出と `pip install -r requirements.txt` の案内。可能なら設定画面から実行できるボタン
-- [ ] `.env` / `SORSA_API_KEY` 未設定時の案内 (現状は fetcher の exit 1 とログだけ)。キー取得手順 (Sorsa のダッシュボード) への誘導
+- [x] Python 起動失敗 (`Win32Exception`) を「Python 3 が必要 + python.org + 設定の案内」に翻訳 (`FetchProcessService`) (2026-07-28)
+- [x] `ModuleNotFoundError` の検出と `pip install -r requirements.txt` の案内 (`FetchOutcome.EnvironmentHint`。ログとリザルト行に表示) (2026-07-28)。設定画面からの実行ボタンは見送り (案内で十分と判断)
+- [x] `SORSA_API_KEY` 未設定の検出と .env / キー取得先の案内 (同上) (2026-07-28)
 
 ### 2-3. ビューア単体モード (閲覧のみ) の保証 (M)
 
-- [ ] Python 無し・API キー無しでも、既存データがあれば閲覧だけは完全に動くことを確認し、取得系ボタンの無効化と理由表示を整える
+- [x] `RepoDir` 未設定でも起動・閲覧できるようにし、取得系の全入口 (`StartFetch` / 一括更新 / フォロー一括登録 / 検索追加) に案内つきガードを追加 (2026-07-28)。検索追加は空バケットが残らないようダイアログ表示前に弾く
 
 想定シナリオ: 別 PC で取得したデータフォルダ (Google Drive 共有) を閲覧専用 PC で開く使い方は docs/data-layer.md §6 で既に想定されている。これを「Python 未導入の新規ユーザー」にも自然に開放する。
 
 ### 2-4. グローバル例外ハンドラ + ファイルログ (M)
 
-- [ ] `DispatcherUnhandledException` / `AppDomain.UnhandledException` / `TaskScheduler.UnobservedTaskException` を拾う
-- [ ] クラッシュ時にも既読キューを flush する (現状 `OnExit` でのみ flush しており、クラッシュでは未保存の既読が消える)
-- [ ] `%APPDATA%\<アプリ名>\logs\` へのファイルログ (日付ローテーション、直近数ファイル保持)
-- [ ] クラッシュダイアログに「ログファイルの場所を開く」ボタン
+- [x] 3 種の未処理例外 (`Dispatcher` / `AppDomain` / `UnobservedTask`) を捕捉して記録 (2026-07-28)
+- [x] クラッシュ時にも既読キューを flush (`App.FlushReadQueue` を通常終了と共用。二重フラッシュは null 化で防止) (2026-07-28)
+- [x] `%APPDATA%\Subako\logs\` への日次ファイルログ (`Services/AppLog`。直近 7 日分保持) (2026-07-28)
+- [x] クラッシュダイアログから「ログフォルダを開く」(Yes/No で explorer 起動) (2026-07-28)
 
 現状は**ハンドラもログも一切無い**ため、公開後に不具合報告を受けても調査材料をユーザーに求められない。
 
