@@ -68,6 +68,47 @@ public sealed class TagRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task AssignManyAsync_直積を冪等に書く()
+    {
+        var tagA = await _repo.AddAsync("A");
+        var tagB = await _repo.AddAsync("B");
+
+        await _repo.AssignManyAsync(["alice", "bob"], [tagA, tagB]);
+        await _repo.AssignManyAsync(["alice", "bob"], [tagA, tagB]);   // 再実行は no-op
+
+        var map = await _repo.GetAssignmentsAsync();
+        Assert.Equal(new[] { tagA, tagB }, map["alice"].Order());
+        Assert.Equal(new[] { tagA, tagB }, map["bob"].Order());
+        var all = await _repo.GetAllAsync();
+        Assert.Equal(2, all.Single(t => t.TagId == tagA).UserCount);
+        Assert.Equal(2, all.Single(t => t.TagId == tagB).UserCount);
+    }
+
+    [Fact]
+    public async Task AssignManyAsync_既存の付与に追加できる()
+    {
+        var tagA = await _repo.AddAsync("A");
+        var tagB = await _repo.AddAsync("B");
+        await _repo.AssignAsync("alice", tagA);
+
+        await _repo.AssignManyAsync(["alice"], [tagB]);
+
+        var map = await _repo.GetAssignmentsAsync();
+        Assert.Equal(new[] { tagA, tagB }, map["alice"].Order());
+    }
+
+    [Fact]
+    public async Task AssignManyAsync_空リストなら何もしない()
+    {
+        var tag = await _repo.AddAsync("A");
+
+        await _repo.AssignManyAsync([], [tag]);
+        await _repo.AssignManyAsync(["alice"], []);
+
+        Assert.Empty(await _repo.GetAssignmentsAsync());
+    }
+
+    [Fact]
     public async Task 検索バケットIDにも付与できる()
     {
         var tag = await _repo.AddAsync("A");

@@ -95,6 +95,10 @@ public sealed partial class FetchDialogViewModel : ObservableObject
                 when target.Mode is FetchMode.Search or FetchMode.SearchUpdate or FetchMode.SearchBackfill =>
                 "リクエスト上限に達したため中断しました(取得分は保存済み)。" +
                 "同じ操作をもう一度実行すると続きから再開します",
+            // フォロー一覧はカーソルを保存しないので「再開」はできない (docs/data-layer.md §1.7)
+            { ExitCode: BudgetExhaustedExitCode } when target.Mode is FetchMode.Followings =>
+                "リクエスト上限に達したため、フォロー一覧を最後まで取得できませんでした" +
+                "(取得できた分だけ登録できます)。全件必要なら上限を増やして実行し直してください",
             { ExitCode: BudgetExhaustedExitCode } =>
                 "リクエスト上限に達したため中断しました(取得分は保存済み)。" +
                 "再度バックフィルを実行すると続きから再開します",

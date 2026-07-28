@@ -16,6 +16,8 @@ public enum FetchMode
     SearchBackfill,
     /// <summary>API を使わず保存済み JSONL から未取得画像だけ補完 (--images-only)。</summary>
     ImagesOnly,
+    /// <summary>フォロー中一覧の取得 (--followings)。ツイートは取得しない。</summary>
+    Followings,
 }
 
 public sealed record FetchResult(int ExitCode, bool Cancelled);
@@ -89,6 +91,9 @@ public sealed class FetchProcessService
                 break;
             case FetchMode.ImagesOnly:
                 psi.ArgumentList.Add("--images-only");
+                break;
+            case FetchMode.Followings:
+                psi.ArgumentList.Add("--followings");
                 break;
         }
         if (maxRequests is { } limit)

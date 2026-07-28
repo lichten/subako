@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using TweetViewer.Models;
 
 namespace TweetViewer.Data;
@@ -86,6 +87,49 @@ public sealed class TagRepository
     public Task AssignAsync(string username, long tagId) =>
         ExecuteWriteAsync("INSERT OR IGNORE INTO user_tags (username, tag_id) VALUES ($u, $t)",
             username, tagId);
+
+    /// <summary>
+    /// 複数ユーザー × 複数タグをまとめて付与する (フォロー一括登録用)。
+    /// AssignAsync を N×M 回呼ぶと毎回 WriteLock と接続を取り直すので、
+    /// DeleteAsync と同じく 1 WriteLock 内の 1 トランザクションでまとめる。
+    /// 既に付いている組み合わせは INSERT OR IGNORE で素通り (冪等)。
+    /// </summary>
+    public async Task AssignManyAsync(
+        IReadOnlyList<string> usernames, IReadOnlyList<long> tagIds)
+    {
+        if (usernames.Count == 0 || tagIds.Count == 0)
+            return;
+        await _db.WriteLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = _db.OpenConnection();
+                using var tx = conn.BeginTransaction();
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText =
+                    "INSERT OR IGNORE INTO user_tags (username, tag_id) VALUES ($u, $t)";
+                var pu = cmd.Parameters.Add("$u", SqliteType.Text);
+                var pt = cmd.Parameters.Add("$t", SqliteType.Integer);
+                cmd.Prepare();
+                foreach (var username in usernames)
+                {
+                    pu.Value = username;
+                    foreach (var tagId in tagIds)
+                    {
+                        pt.Value = tagId;
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+                tx.Commit();
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            _db.WriteLock.Release();
+        }
+    }
 
     /// <summary>タグ解除。</summary>
     public Task UnassignAsync(string username, long tagId) =>

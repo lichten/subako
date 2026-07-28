@@ -88,6 +88,13 @@ class SorsaClient:
     def user_info(self, username):
         return self._get("/info", {"username": username})
 
+    def follows(self, username, cursor=None):
+        """指定ユーザーがフォロー中のアカウント一覧 (1ページ最大200件)。"""
+        params = {"username": username}
+        if cursor:
+            params["next_cursor"] = cursor
+        return self._get("/follows", params)
+
     def user_tweets(self, username, cursor=None):
         payload = {"username": username}
         if cursor:

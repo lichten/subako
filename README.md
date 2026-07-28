@@ -50,6 +50,7 @@ python main.py <username>
 | `--backfill` | タイムラインで遡り切れなかった期間を `search-tweets` の期間分割検索で補完 |
 | `--fresh` | 進捗(state.json)を無視して最初からページングし直す(重複保存はされない) |
 | `--rps N` | リクエストレート上限(既定 5、Sorsa の上限は 20) |
+| `--followings` | `username` がフォロー中の一覧を `_followings/<username>.jsonl` に書き出す(ツイートは取得しない。ビューアの一括登録用) |
 
 ## 出力
 

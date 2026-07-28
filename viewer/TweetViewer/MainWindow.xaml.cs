@@ -247,6 +247,87 @@ public partial class MainWindow : Window
         _ = RunFetchAsync(dialogVm);
     }
 
+    /// <summary>
+    /// 「フォロー中を一括登録」。指定アカウントのフォロー中を取得し (ツイートは取らない)、
+    /// 全員を users に登録して選んだタグを付ける。取得完了後の処理が通常の取込
+    /// (Vm.OnFetchCompletedAsync) と違うため、UpdateAllVisible_Click と同じく
+    /// StartFetch を通さず FetchDialogViewModel を直接組み立てる。
+    /// </summary>
+    private async void ImportFollowings_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm.IsFetching)
+            return;
+        var dialog = new ImportFollowingsDialog(Vm.Tags) { Owner = this };
+        if (dialog.ShowDialog() != true)
+            return;
+        if (MainViewModel.NormalizeUsername(dialog.SourceUsername) is not { } source)
+        {
+            MessageBox.Show("ユーザー名は英数字と _ のみ使用できます。",
+                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var tagIds = dialog.SelectedTagIds;
+        var newTagNames = dialog.NewTagNames;
+
+        // 前回取得したフォロー一覧が残っていれば API を使わず登録し直せる
+        // (タグを選び直したいだけのときに再課金しないため)
+        var saved = Vm.SavedFollowingsCount(source);
+        if (saved > 0)
+        {
+            var reuse = MessageBox.Show(
+                $"@{source} の取得済みフォロー一覧 ({saved:N0} 件) があります。\n" +
+                "API を使わずにこれを登録しますか?\n" +
+                "「いいえ」を選ぶと取得し直します。",
+                "TweetViewer", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (reuse == MessageBoxResult.Cancel)
+                return;
+            if (reuse == MessageBoxResult.Yes)
+            {
+                await ConfirmAndImportFollowingsAsync(source, tagIds, newTagNames);
+                return;
+            }
+        }
+
+        Vm.IsFetching = true;
+        var dialogVm = new FetchDialogViewModel(
+            Vm.FetchService, source,
+            _ => ConfirmAndImportFollowingsAsync(source, tagIds, newTagNames),
+            FetchMode.Followings, dialog.MaxRequests);
+        dialogVm.WindowTitle = $"フォロー中を取得: @{source}";
+        var window = new UpdateLogWindow { Owner = this, DataContext = dialogVm };
+        window.Show();
+        _ = RunFetchAsync(dialogVm);
+    }
+
+    /// <summary>
+    /// 登録直前に件数を見せて確認する。数千行がいきなりサイドバーに増えるため。
+    /// 中断でプロセスを Kill された実行は fetcher がファイルを残さないので、
+    /// ここで 0 件 = 取得できなかった、と判定できる (古い結果を誤って取り込まない)。
+    /// </summary>
+    private async Task ConfirmAndImportFollowingsAsync(
+        string source, IReadOnlyList<long> tagIds, IReadOnlyList<string> newTagNames)
+    {
+        var count = Vm.SavedFollowingsCount(source);
+        if (count == 0)
+        {
+            Vm.StatusText = $"@{source} のフォロー一覧を取得できませんでした " +
+                            "(中断・非公開アカウント・存在しないアカウントなど)";
+            return;
+        }
+        var ok = MessageBox.Show(
+            $"@{source} のフォロー {count:N0} 件をユーザーとして登録します。よろしいですか?\n\n" +
+            "ツイートは取得しません。登録後にタグで絞り込んでから" +
+            "「表示中をすべて更新...」を実行してください。",
+            "TweetViewer", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (ok != MessageBoxResult.OK)
+        {
+            Vm.StatusText = "登録を中止しました (取得したフォロー一覧は保存済みで、" +
+                            "もう一度同じ操作をすれば API なしで登録できます)";
+            return;
+        }
+        await Vm.ImportFollowingsAsync(source, tagIds, newTagNames);
+    }
+
     private async void AddSearch_Click(object sender, RoutedEventArgs e)
     {
         if (Vm.IsFetching)

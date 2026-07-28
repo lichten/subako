@@ -9,6 +9,9 @@ using TweetViewer.Services;
 
 namespace TweetViewer.ViewModels;
 
+/// <summary>フォロー一括登録の結果 (対象件数 / 新規登録数 / 付与したタグ数)。</summary>
+public sealed record FollowingsImportResult(int Total, int Added, int TagCount);
+
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly ViewerDatabase _db;
@@ -421,7 +424,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>@ を外して英数字と _ のみ検証。不正なら null。</summary>
-    private static string? NormalizeUsername(string username)
+    public static string? NormalizeUsername(string username)
     {
         username = username.TrimStart('@').Trim();
         return username.Length == 0 || username.Any(c => !char.IsLetterOrDigit(c) && c != '_')
@@ -470,6 +473,67 @@ public sealed partial class MainViewModel : ObservableObject
                 ? $"@{added.Username} は登録済みのためタグのみ引き継ぎました"
                 : $"@{added.Username} は登録済みです";
         return (added, isNew);
+    }
+
+    /// <summary>取得済みフォロー一覧の件数 (未取得なら 0)。確認ダイアログ用。</summary>
+    public int SavedFollowingsCount(string sourceUsername) =>
+        FollowingsFile.Count(_db.DataDir, sourceUsername);
+
+    /// <summary>
+    /// data/_followings/&lt;source&gt;.jsonl を読み、載っているアカウントを users へ
+    /// 一括登録して指定タグを付ける (ImportFollowingsDialog → 取得完了後)。
+    /// ツイートは取得しない — 後から「表示中をすべて更新...」をタグで絞って実行する想定。
+    ///
+    /// 一括処理なので RefreshUsersAsync / RefreshTagsAsync は最後に 1 回だけ呼ぶ。
+    /// ToggleTagAsync は 1 件ごとに UsersView.Refresh() と tag.UserCount の手動加算を
+    /// するため、ここでは絶対に使わないこと (数千回 Refresh すると固まる)。
+    ///
+    /// 既に登録済みのユーザーにも同じタグを付ける。「このタグ = @source のフォロー」
+    /// という前提が崩れると、後続の一括更新をタグで絞ったときに取りこぼす。
+    /// </summary>
+    public async Task<FollowingsImportResult> ImportFollowingsAsync(
+        string sourceUsername, IReadOnlyList<long> existingTagIds,
+        IReadOnlyList<string> newTagNames)
+    {
+        var entries = await Task.Run(() => FollowingsFile.Read(_db.DataDir, sourceUsername));
+        // API 由来の handle も検証する。不正文字はフォルダ名や
+        // 検索バケット ID (searches/<slug>) と衝突しうる
+        var targets = entries
+            .Select(e => (Username: NormalizeUsername(e.Username), e.DisplayName))
+            .Where(e => e.Username is not null &&
+                        !string.Equals(e.Username, sourceUsername,
+                                       StringComparison.OrdinalIgnoreCase))
+            .Select(e => (Username: e.Username!, e.DisplayName))
+            .ToList();
+        if (targets.Count == 0)
+        {
+            StatusText = $"@{sourceUsername} のフォロー一覧を読み込めませんでした";
+            return new FollowingsImportResult(0, 0, 0);
+        }
+
+        StatusText = $"{targets.Count:N0} 件を登録中…";
+        // タグ作成は「登録する対象が確定してから」。取得に失敗した実行で
+        // 空タグだけが増えるのを避ける。AddAsync は名前の upsert なので、
+        // 既存タグ名を打ち込んでも重複せず既存 ID に合流する
+        var tagIds = new List<long>(existingTagIds.Distinct());
+        foreach (var name in newTagNames)
+        {
+            var id = await _tags.AddAsync(name);
+            if (!tagIds.Contains(id))
+                tagIds.Add(id);
+        }
+
+        var added = await _users.AddManyAsync(targets);
+        await _tags.AssignManyAsync(targets.Select(t => t.Username).ToList(), tagIds);
+
+        await RefreshUsersAsync();
+        await RefreshTagsAsync();
+        StatusText =
+            $"@{sourceUsername} のフォロー {targets.Count:N0} 件のうち " +
+            $"{added.Count:N0} 件を新規登録しました" +
+            (tagIds.Count > 0 ? $" (タグ {tagIds.Count} 件を付与)" : "") +
+            " — ツイートは未取得です";
+        return new FollowingsImportResult(targets.Count, added.Count, tagIds.Count);
     }
 
     /// <summary>取得完了後の差分取込+画面反映(UpdateLogWindow から)。username はバケット ID の場合もある。</summary>

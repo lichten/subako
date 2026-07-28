@@ -42,6 +42,10 @@
             <DockPanel DockPanel.Dock="Top" Margin="8">
                 <Button DockPanel.Dock="Right" Content="＋" Width="28" Height="28"
                         ToolTip="ユーザーを追加" Click="AddUser_Click" />
+                <Button DockPanel.Dock="Right" Content="⇩" Width="28" Height="28" Margin="0,0,4,0"
+                        Click="ImportFollowings_Click"
+                        IsEnabled="{Binding IsFetching, Converter={StaticResource InverseBool}}"
+                        ToolTip="指定アカウントがフォロー中のアカウントをまとめて登録します(ツイートは取得しません)" />
                 <TextBlock Text="ユーザー" FontWeight="Bold" VerticalAlignment="Center" />
             </DockPanel>
             <!-- タグフィルタ (未選択 = 全件表示。先頭の「(タグなし)」は疑似タグ) -->

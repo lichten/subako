@@ -30,6 +30,21 @@ public class FetchBudgetTests
     }
 
     [Fact]
+    public void ParsesFollowingsCompletionLine()
+    {
+        // --followings は TweetFetcher を通らず独自に完了ログを出すため、
+        // 書式が崩れていないことをここで固定する (Python↔C# の請求契約)
+        var log = new[]
+        {
+            "> python main.py alice --output-dir data --followings --max-requests 50",
+            "2026-07-28 10:02:56,681 INFO [follows] page=1 取得=200 累計=200",
+            "2026-07-28 10:02:56,686 INFO 完了: 新規保存=3749件 / 総保存=3749件 / " +
+            "APIリクエスト=19回 / 保存先=data\\_followings\\alice.jsonl",
+        };
+        Assert.Equal(19, FetchBudget.ParseConsumedRequests(log));
+    }
+
+    [Fact]
     public void ReturnsNullWhenNoCompletionLine()
     {
         // 中断ボタンでプロセスを Kill したときは finally が走らず完了ログが出ない

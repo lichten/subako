@@ -17,8 +17,10 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -57,6 +59,126 @@ def download_missing_images(storage, logger):
     return 0
 
 
+FOLLOWINGS_DIR_NAME = "_followings"
+_HANDLE_RE = re.compile(r"^[A-Za-z0-9_]+$")
+
+# /follows は終端を next_cursor="0" (文字列) で表す。null でも不在でもない。
+# Python では "0" が真になるため、falsy 判定だけでは絶対に終端を検出できない
+# (実測: フォロー 39 人のアカウントで "0" を送ると 1 ページ目が延々返ってくる)
+_TERMINAL_CURSORS = frozenset({"", "0", "-1"})
+
+
+def is_terminal_cursor(cursor):
+    """ページングの終端を表すカーソルか。"""
+    return str(cursor if cursor is not None else "").strip() in _TERMINAL_CURSORS
+
+
+def collect_followings(client, source, out_users, max_requests=None, logger=None):
+    """/follows を最後までページングして out_users に User オブジェクトを追記する。
+
+    取得できた分は例外で中断しても呼び出し側が使えるよう out_users に溜める。
+
+    終了条件が 3 つあるのは意図的:
+
+    1. next_cursor が終端値 (`_TERMINAL_CURSORS`)。これが直接の終端判定。
+    2. 新規が 1 件も増えなかったページ。**本命の安全網**で、API が返す番兵値の
+       語彙を知らなくても「同じページを返し続けられる」状態から抜けられる。
+       ページが空でなくても (全件が重複でも) 効くことが重要。
+    3. カーソルが前回と同一。同じページを返し続ける挙動全般への保険。
+    """
+    logger = logger or logging.getLogger("main")
+    seen = set()
+    cursor = None
+    page = 0
+    while True:
+        if max_requests is not None and client.request_count >= max_requests:
+            raise RequestBudgetExhausted(max_requests)
+        resp = client.follows(source, cursor=cursor)
+        page_users = resp.get("users") or []
+        page += 1
+        added = 0
+        for user in page_users:
+            key = str(user.get("id") or user.get("id_str")
+                      or user.get("username") or "").lower()
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            out_users.append(user)
+            added += 1
+        previous_cursor = cursor
+        cursor = resp.get("next_cursor")
+        logger.info("[follows] page=%d 取得=%d 新規=%d 累計=%d",
+                    page, len(page_users), added, len(out_users))
+        if is_terminal_cursor(cursor):
+            logger.info("フォロー一覧の終端に到達しました (next_cursor=%r)", cursor)
+            return
+        if added == 0:
+            logger.warning(
+                "新規が 0 件のページが返ったため打ち切ります "
+                "(next_cursor=%r。終端の番兵値かもしれません)", cursor)
+            return
+        if previous_cursor is not None and cursor == previous_cursor:
+            logger.warning("next_cursor が前回と同じ (%r) ため打ち切ります", cursor)
+            return
+
+
+def fetch_followings(client, args, logger):
+    """--followings: 対象アカウントがフォロー中の一覧を取得して JSONL に書き出す。
+
+    ツイートは取得しない (ビューアの一括登録用のユーザー一覧だけ)。Storage は
+    tweets.jsonl / state.json / images/ を前提にしているので使わない — 使うと
+    登録目的のアカウントに空の images/ と state.json が残ってしまう。
+
+    ビューアはプロセス終了後にこのファイルを読んで users へ一括登録する
+    (docs/data-layer.md §1.7)。完了ログは C# 側 (Services/FetchBudget.cs) が
+    消費リクエスト数を読み取るため、"APIリクエスト=N回" を必ず含めること。
+    """
+    source = args.username.lstrip("@").strip()
+    if not _HANDLE_RE.match(source):
+        logger.error("ユーザー名は英数字と _ のみ使用できます: %r", args.username)
+        return 1
+
+    out_dir = Path(args.output_dir) / FOLLOWINGS_DIR_NAME
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{source}.jsonl"
+    tmp_path = out_dir / f"{source}.jsonl.tmp"
+    # 中断 (プロセス kill) された実行が古い結果を残さないよう先に消す。
+    # ビューアは「ファイルが無い = 取得できなかった」で判定する
+    out_path.unlink(missing_ok=True)
+    tmp_path.unlink(missing_ok=True)
+
+    users = []
+    exit_code = 0
+    try:
+        collect_followings(client, source, users, args.max_requests, logger)
+    except RequestBudgetExhausted:
+        exit_code = 10
+        logger.warning(
+            "リクエスト上限 %d に達したため中断しました。取得できた %d 件だけ書き出します "
+            "(この取得は再開できません。全件必要なら上限を増やして実行し直してください)",
+            args.max_requests, len(users),
+        )
+    except SorsaApiError as exc:
+        exit_code = 1
+        logger.error("API エラーで中断しました: %s", exc)
+        logger.error("(非公開アカウント・存在しないアカウントの可能性があります)")
+    except KeyboardInterrupt:
+        exit_code = 130
+        logger.warning("中断されました")
+    finally:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            for user in users:
+                f.write(json.dumps(user, ensure_ascii=False) + "\n")
+        os.replace(tmp_path, out_path)
+        # 完了ログの書式はツイート取得と揃える (C# が APIリクエスト=N回 を読む)
+        logger.info(
+            "完了: 新規保存=%d件 / 総保存=%d件 / APIリクエスト=%d回 / 保存先=%s",
+            len(users), len(users), client.request_count, out_path,
+        )
+    return exit_code
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Sorsa API で特定ユーザーのツイートを全取得し、画像も保存する"
@@ -74,6 +196,10 @@ def main():
     parser.add_argument("--images-only", action="store_true",
                         help="API を一切使わず、保存済み JSONL を読み直して未取得の画像だけ"
                              "ダウンロードする (引用先・RT元の画像の後追い補完用)")
+    parser.add_argument("--followings", action="store_true",
+                        help="username がフォロー中のアカウント一覧を取得して "
+                             "<output-dir>/_followings/<username>.jsonl に書き出す "
+                             "(ツイートは取得しない。ビューアの一括登録用)")
     parser.add_argument("--backfill", action="store_true",
                         help="タイムライン取得後に search-tweets の期間分割検索で補完する")
     parser.add_argument("--fresh", action="store_true",
@@ -90,7 +216,12 @@ def main():
                              "X の検索インデックスは 2014 年以前をほぼ返さない)")
     args = parser.parse_args()
 
-    if args.images_only:
+    if args.followings:
+        # username を取りつつツイートを取得しない唯一のモードなので、
+        # 既存の相互排他判定より前に分岐する
+        if not args.username or args.search or args.search_name or args.images_only:
+            parser.error("--followings は username とだけ組み合わせて指定してください")
+    elif args.images_only:
         if bool(args.username) == bool(args.search_name):
             parser.error(
                 "--images-only は username か --search-name のどちらか一方を指定してください")
@@ -119,6 +250,10 @@ def main():
         return 1
 
     client = SorsaClient(api_key, requests_per_second=args.rps)
+
+    # Storage を作る前に返す (フォロー一覧は tweets.jsonl 系の構造を持たない)
+    if args.followings:
+        return fetch_followings(client, args, logger)
 
     if args.search:
         if args.fresh:

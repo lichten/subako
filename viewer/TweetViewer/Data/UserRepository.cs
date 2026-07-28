@@ -1,4 +1,5 @@
 using System.IO;
+using Microsoft.Data.Sqlite;
 using TweetViewer.Models;
 
 namespace TweetViewer.Data;
@@ -71,6 +72,60 @@ public sealed class UserRepository
                 cmd.Parameters.AddWithValue("$t", JsonlImporter.UtcNow());
                 var added = cmd.ExecuteNonQuery() > 0;
                 Directory.CreateDirectory(_db.UserDir(username));
+                return added;
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            _db.WriteLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// ユーザーをまとめて登録する (フォロー一括登録用)。AddAsync を N 回呼ぶと
+    /// N 回の WriteLock 取得 + N 本の接続になるため、DeleteArchiveAsync と同じ
+    /// 「1 WriteLock 内の 1 トランザクション」でまとめる。
+    ///
+    /// - display_name は新規行の初期値だけ (INSERT OR IGNORE なので既存行は不触)。
+    ///   取込後は JsonlImporter が最新ツイート由来で上書きする。
+    /// - icon_url は入れない。数千件を一度に入れると RefreshUsersAsync が
+    ///   同数のアイコン DL を一斉に走らせて全部失敗させる (docs/data-layer.md §1.7)。
+    /// - data/&lt;username&gt;/ は作らない。取込は JSONL 不在なら即 return し
+    ///   (JsonlImporter.ImportUserAsync)、実際の取得時に Python 側が mkdir する。
+    ///   数千個の空フォルダは毎起動の RegisterExistingDataDirsAsync を重くするだけ。
+    /// </summary>
+    /// <returns>実際に新規登録された username (入力順)。既存だったものは含まない。</returns>
+    public async Task<List<string>> AddManyAsync(
+        IReadOnlyList<(string Username, string? DisplayName)> users)
+    {
+        if (users.Count == 0)
+            return [];
+        await _db.WriteLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            return await Task.Run(() =>
+            {
+                var added = new List<string>();
+                using var conn = _db.OpenConnection();
+                using var tx = conn.BeginTransaction();
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = """
+                    INSERT OR IGNORE INTO users (username, display_name, added_at)
+                    VALUES ($u, $d, $t)
+                    """;
+                var pu = cmd.Parameters.Add("$u", SqliteType.Text);
+                var pd = cmd.Parameters.Add("$d", SqliteType.Text);
+                cmd.Parameters.AddWithValue("$t", JsonlImporter.UtcNow());
+                cmd.Prepare();
+                foreach (var (username, displayName) in users)
+                {
+                    pu.Value = username;
+                    pd.Value = (object?)displayName ?? DBNull.Value;
+                    if (cmd.ExecuteNonQuery() > 0)
+                        added.Add(username);
+                }
+                tx.Commit();
                 return added;
             }).ConfigureAwait(false);
         }
