@@ -203,7 +203,7 @@
 
 - [x] CI (`.github/workflows/ci.yml`): push/PR ごとに dotnet test + pytest (windows-latest) (2026-07-28)
 - [x] リリース (`.github/workflows/release.yml`): `v*` タグ push で test → publish → zip + Inno Setup インストーラーを**ドラフト** Release に添付 (公開は手動確認後) (2026-07-28)
-- [ ] 初回 push 後に CI が green になることを確認
+- [x] 初回 push 後に CI が green になることを確認 (run 30334706220, 2026-07-28)。注: actions/checkout@v4 等に Node.js 20 非推奨の警告が出ている — 動作に支障は無いが、いずれ各 action のメジャーバージョンを上げる
 
 ### 4-4. README の書き直し (M)
 
