@@ -11,7 +11,7 @@ public sealed class SchemaMigrationTests : IDisposable
 
     public SchemaMigrationTests()
     {
-        _dataDir = Path.Combine(Path.GetTempPath(), "TweetViewerTests", Guid.NewGuid().ToString("N"));
+        _dataDir = Path.Combine(Path.GetTempPath(), "SubakoTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dataDir);
     }
 

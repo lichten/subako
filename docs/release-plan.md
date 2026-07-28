@@ -155,12 +155,10 @@
 
 ### 3-1. アプリケーションアイコンの作成 (M)
 
-- [ ] アイコンをデザインする (元データは SVG または高解像度 PNG で保存し、リポジトリに含める)
-- [ ] マルチサイズ `.ico` を生成する (16 / 32 / 48 / 256 px を含めること — Explorer・タスクバー・Alt-Tab で別サイズが使われる)
-- [ ] `TweetViewer.csproj` に `<ApplicationIcon>` を設定 (exe のアイコン)
-- [ ] ウィンドウのアイコン適用 — 全 14 Window に個別指定せず、exe アイコンの既定継承で足りるか確認し、足りなければ App レベルで一括指定
-
-現状: `.ico` ファイルが 1 つも無く、exe・タスクバー・Alt-Tab すべて WPF の既定アイコン。
+- [x] アイコンをデザイン → 巣箱 (切妻屋根 + 丸い入口 + 止まり木)。元データは生成コード `tools/icongen` としてリポジトリに保存 (再実行で同じ .ico が得られる)。README 用に `assets/icon/subako-256.png` も出力 (2026-07-28)
+- [x] マルチサイズ `.ico` (16/32/48 = BMP エントリ、256 = PNG エントリ) を生成し `viewer/TweetViewer/subako.ico` に配置 (2026-07-28)
+- [x] `<ApplicationIcon>` を設定し、ビルド後の exe からアイコン抽出できることを確認 (2026-07-28)
+- [ ] ウィンドウ左上・タスクバー・Alt-Tab での見え方を実機確認 (WPF は未指定の Window に exe アイコンを既定継承するため個別指定は不要の想定)
 
 ### 3-2. 名称の一斉置換 (M)
 
@@ -172,7 +170,7 @@
 - [x] `%APPDATA%\TweetViewer` → `%APPDATA%\Subako` + 旧フォルダからの設定移行 (`AppSettings.MigrateLegacySettings`。コピー方式なので旧バージョンに戻しても設定は残る) (2026-07-28)
 - [x] アセンブリ名 → `Subako` (exe 名のみ変更。名前空間・フォルダ名は churn を避けて `TweetViewer` のまま据え置くと決定し、csproj にコメントで明記) (2026-07-28)
 - [ ] リポジトリ名 (フェーズ 5 で実施)
-- [ ] テストの一時フォルダ名 `TweetViewerTests` (機能に影響なし。ついで程度)
+- [x] テストの一時フォルダ名 `TweetViewerTests` → `SubakoTests` (2026-07-28)
 
 ### 3-3. アセンブリメタデータとバージョン番号 (S)
 
@@ -181,7 +179,8 @@
 
 ### 3-4. app.manifest の追加 (S)
 
-- [ ] DPI awareness (PerMonitorV2) を明示する `app.manifest` を追加し、混在 DPI のマルチモニタで表示を確認
+- [x] DPI awareness (PerMonitorV2) を明示する `app.manifest` を追加 (2026-07-28)
+- [ ] 混在 DPI のマルチモニタでの表示を実機確認
 
 ---
 

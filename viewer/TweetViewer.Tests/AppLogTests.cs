@@ -10,7 +10,7 @@ public sealed class AppLogTests : IDisposable
 
     public AppLogTests()
     {
-        _dir = Path.Combine(Path.GetTempPath(), "TweetViewerTests", Guid.NewGuid().ToString("N"));
+        _dir = Path.Combine(Path.GetTempPath(), "SubakoTests", Guid.NewGuid().ToString("N"));
     }
 
     public void Dispose()

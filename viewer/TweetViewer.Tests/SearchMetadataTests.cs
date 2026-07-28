@@ -10,7 +10,7 @@ public sealed class SearchMetadataTests : IDisposable
 
     public SearchMetadataTests()
     {
-        _dir = Path.Combine(Path.GetTempPath(), "TweetViewerTests", Guid.NewGuid().ToString("N"));
+        _dir = Path.Combine(Path.GetTempPath(), "SubakoTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
     }
 

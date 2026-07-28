@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <!-- DPI awareness の明示 (docs/release-plan.md §3-4)。
+       宣言なしだと OS 側の既定に任せることになり、混在 DPI のマルチモニタで
+       挙動が環境依存になる。WPF (.NET 5+) は PerMonitorV2 に対応している -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>

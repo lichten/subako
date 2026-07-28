@@ -13,7 +13,7 @@ public class UpdateLogWindowTests
 {
     private static FetchDialogViewModel CreateVm()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "TweetViewerTests", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "SubakoTests", Guid.NewGuid().ToString("N"));
         var settings = new AppSettings { RepoDir = dir, DataDir = dir };
         return new FetchDialogViewModel(
             new FetchProcessService(settings), "alice", _ => Task.CompletedTask);

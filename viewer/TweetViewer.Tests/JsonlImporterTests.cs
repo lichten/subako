@@ -11,7 +11,7 @@ public sealed class JsonlImporterTests : IDisposable
 
     public JsonlImporterTests()
     {
-        _dataDir = Path.Combine(Path.GetTempPath(), "TweetViewerTests", Guid.NewGuid().ToString("N"));
+        _dataDir = Path.Combine(Path.GetTempPath(), "SubakoTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dataDir);
         _db = new ViewerDatabase(_dataDir);
         _db.EnsureCreated();

@@ -10,6 +10,9 @@
          名前空間・フォルダ名は churn を避けて TweetViewer のまま据え置く -->
     <AssemblyName>Subako</AssemblyName>
     <RootNamespace>TweetViewer</RootNamespace>
+    <!-- アイコンの元データは tools/icongen (再実行で同じ .ico を生成できる) -->
+    <ApplicationIcon>subako.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <Version>0.1.0</Version>
     <Product>Subako</Product>
     <Authors>Lichten</Authors>

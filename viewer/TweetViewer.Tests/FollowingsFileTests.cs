@@ -11,7 +11,7 @@ public sealed class FollowingsFileTests : IDisposable
 
     public FollowingsFileTests()
     {
-        _dataDir = Path.Combine(Path.GetTempPath(), "TweetViewerTests", Guid.NewGuid().ToString("N"));
+        _dataDir = Path.Combine(Path.GetTempPath(), "SubakoTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dataDir);
     }
 
