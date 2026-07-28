@@ -8,6 +8,11 @@
         d:DataContext="{d:DesignInstance Type=vm:FetchDialogViewModel}"
         Title="{Binding WindowTitle}" Height="420" Width="680"
         WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <!-- App.xaml と同じ定義。Application が無い単体テストでも生成できるように
+             ウィンドウ内で解決を完結させる (UpdateLogWindowTests) -->
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </Window.Resources>
     <Grid Margin="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />

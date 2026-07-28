@@ -10,6 +10,12 @@ public partial class MainWindow : Window
 {
     private readonly AppSettings _settings;
 
+    /// <summary>
+    /// 実行中の取得ログウィンドウ。開始時は表示せず、ステータスバーのリンクか
+    /// 失敗時の自動表示で開く。IsFetching ガードにより常に現在の実行に対応する。
+    /// </summary>
+    private UpdateLogWindow? _fetchLogWindow;
+
     public MainWindow(AppSettings settings)
     {
         InitializeComponent();
@@ -62,6 +68,9 @@ public partial class MainWindow : Window
         if (SidebarColumn.ActualWidth > 0)
             _settings.SidebarWidth = SidebarColumn.ActualWidth;
         _settings.Save();
+        // 取得中でもアプリ終了をログウィンドウの Hide 化に妨げられないようにする
+        if (_fetchLogWindow is { } logWindow)
+            logWindow.ForceClose = true;
         base.OnClosing(e);
     }
 
@@ -203,13 +212,37 @@ public partial class MainWindow : Window
     {
         if (Vm.IsFetching)
             return;
-        Vm.IsFetching = true;
         var dialogVm = new FetchDialogViewModel(
             Vm.FetchService, username, Vm.OnFetchCompletedAsync, mode, maxRequests, searchQuery,
             backfillSince);
+        LaunchFetch(dialogVm);
+    }
+
+    /// <summary>
+    /// 取得を開始する。ログウィンドウは作るが表示しない — 実行中はステータスバーの
+    /// 「取得中 — ログを表示」から開き、失敗・中断時だけ完了時に自動表示する。
+    /// </summary>
+    private void LaunchFetch(FetchDialogViewModel dialogVm)
+    {
+        Vm.IsFetching = true;
         var window = new UpdateLogWindow { Owner = this, DataContext = dialogVm };
-        window.Show();
+        window.Closed += (_, _) =>
+        {
+            if (_fetchLogWindow == window)
+                _fetchLogWindow = null;
+        };
+        _fetchLogWindow = window;
         _ = RunFetchAsync(dialogVm);
+    }
+
+    private void ShowFetchLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (_fetchLogWindow is not { } window)
+            return;
+        if (window.WindowState == WindowState.Minimized)
+            window.WindowState = WindowState.Normal;
+        window.Show();      // 非表示なら初回表示 (CenterOwner 適用)、表示済みなら no-op
+        window.Activate();
     }
 
     /// <summary>
@@ -239,12 +272,9 @@ public partial class MainWindow : Window
                 new FetchTarget(s.Username, $"検索「{s.Label}」", FetchMode.SearchUpdate, s.Query)))
             .ToList();
 
-        Vm.IsFetching = true;
         var dialogVm = new FetchDialogViewModel(
             Vm.FetchService, targets, Vm.OnFetchCompletedAsync, dialog.MaxRequests);
-        var window = new UpdateLogWindow { Owner = this, DataContext = dialogVm };
-        window.Show();
-        _ = RunFetchAsync(dialogVm);
+        LaunchFetch(dialogVm);
     }
 
     /// <summary>
@@ -288,15 +318,12 @@ public partial class MainWindow : Window
             }
         }
 
-        Vm.IsFetching = true;
         var dialogVm = new FetchDialogViewModel(
             Vm.FetchService, source,
             _ => ConfirmAndImportFollowingsAsync(source, tagIds, newTagNames),
             FetchMode.Followings, dialog.MaxRequests);
         dialogVm.WindowTitle = $"フォロー中を取得: @{source}";
-        var window = new UpdateLogWindow { Owner = this, DataContext = dialogVm };
-        window.Show();
-        _ = RunFetchAsync(dialogVm);
+        LaunchFetch(dialogVm);
     }
 
     /// <summary>
@@ -434,6 +461,25 @@ public partial class MainWindow : Window
         finally
         {
             Vm.IsFetching = false;
+            // await の継続は UI スレッド (Dispatcher) 上なので Window 操作可
+            if (_fetchLogWindow is { } window)
+            {
+                if (dialogVm.HasIssues)
+                {
+                    // 失敗・中断・上限到達のときだけ自動表示 (成功時はステータスバーのみ)
+                    if (window.WindowState == WindowState.Minimized)
+                        window.WindowState = WindowState.Normal;
+                    window.Show();
+                    window.Activate();
+                }
+                else if (!window.IsVisible)
+                {
+                    // 一度も見られず成功 → そのまま破棄 (Closed でフィールドが null に)
+                    window.Close();
+                }
+                // 表示中に成功した場合は開いたまま (「取得完了」を見せる)。
+                // IsRunning=false なので ✕ で普通に閉じられる
+            }
         }
     }
 }

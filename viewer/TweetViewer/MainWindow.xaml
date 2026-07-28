@@ -502,8 +502,18 @@
             </Grid>
         </DockPanel>
 
-        <!-- ステータスバー -->
+        <!-- ステータスバー (取得中の項目を StatusText より前に置き、リンク位置を安定させる) -->
         <StatusBar Grid.Row="1" Grid.ColumnSpan="3">
+            <StatusBarItem>
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding IsFetching, Converter={StaticResource BoolToVis}}">
+                    <ProgressBar Width="100" Height="12" Margin="0,0,6,0"
+                                 IsIndeterminate="{Binding IsFetching}" />
+                    <TextBlock VerticalAlignment="Center">
+                        <Hyperlink Click="ShowFetchLog_Click">取得中 — ログを表示</Hyperlink>
+                    </TextBlock>
+                </StackPanel>
+            </StatusBarItem>
             <StatusBarItem>
                 <TextBlock Text="{Binding StatusText}" />
             </StatusBarItem>

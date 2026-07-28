@@ -12,8 +12,6 @@ public sealed record FetchTarget(
 /// <summary>UpdateLogWindow 用: 取得サブプロセスのライブログ表示と中断。</summary>
 public sealed partial class FetchDialogViewModel : ObservableObject
 {
-    private const int BudgetExhaustedExitCode = 10;
-
     private readonly FetchProcessService _service;
     private readonly Func<string, Task> _onCompleted;
     private readonly IReadOnlyList<FetchTarget> _targets;
@@ -31,6 +29,12 @@ public sealed partial class FetchDialogViewModel : ObservableObject
 
     [ObservableProperty]
     private string _resultText = "";
+
+    /// <summary>
+    /// 失敗・中断・上限到達で終わったか。完了後にログを自動表示するかの判定に使う。
+    /// StartAsync 完了後に UI スレッドで 1 回読むだけなので INPC は不要。
+    /// </summary>
+    public bool HasIssues { get; private set; }
 
     /// <summary>単体取得 (従来の呼び出し)。</summary>
     public FetchDialogViewModel(
@@ -74,6 +78,7 @@ public sealed partial class FetchDialogViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            HasIssues = true;
             ResultText = $"実行に失敗しました: {ex.Message}";
             LogLines.Add(ResultText);
         }
@@ -87,23 +92,7 @@ public sealed partial class FetchDialogViewModel : ObservableObject
     {
         var target = _targets[0];
         var (result, _) = await RunTargetAsync(target, _maxRequests);
-        ResultText = result switch
-        {
-            { Cancelled: true } => "中断しました(途中までの取得分は保存済み)",
-            { ExitCode: 0 } => "取得完了",
-            { ExitCode: BudgetExhaustedExitCode }
-                when target.Mode is FetchMode.Search or FetchMode.SearchUpdate or FetchMode.SearchBackfill =>
-                "リクエスト上限に達したため中断しました(取得分は保存済み)。" +
-                "同じ操作をもう一度実行すると続きから再開します",
-            // フォロー一覧はカーソルを保存しないので「再開」はできない (docs/data-layer.md §1.7)
-            { ExitCode: BudgetExhaustedExitCode } when target.Mode is FetchMode.Followings =>
-                "リクエスト上限に達したため、フォロー一覧を最後まで取得できませんでした" +
-                "(取得できた分だけ登録できます)。全件必要なら上限を増やして実行し直してください",
-            { ExitCode: BudgetExhaustedExitCode } =>
-                "リクエスト上限に達したため中断しました(取得分は保存済み)。" +
-                "再度バックフィルを実行すると続きから再開します",
-            _ => $"エラー終了 (exit code {result.ExitCode})",
-        };
+        (ResultText, HasIssues) = FetchOutcome.DescribeSingle(result, target.Mode);
         // 失敗・中断でもページ毎に保存済みのため取込は実行する
         await _onCompleted(target.Username);
     }
@@ -148,7 +137,7 @@ public sealed partial class FetchDialogViewModel : ObservableObject
                 stopReason = "中断しました(ここまでの取得分は保存済み)";
                 break;
             }
-            if (result.ExitCode == BudgetExhaustedExitCode)
+            if (result.ExitCode == FetchOutcome.BudgetExhaustedExitCode)
             {
                 succeeded++;
                 stopReason = "リクエスト上限に達したため中断しました。" +
@@ -163,15 +152,14 @@ public sealed partial class FetchDialogViewModel : ObservableObject
             succeeded++;
         }
 
-        var summary = $"完了 {succeeded}/{_targets.Count} 件 / 消費 {consumedTotal} リクエスト";
+        (var summary, var hasIssues) = FetchOutcome.DescribeBatch(
+            succeeded, _targets.Count, consumedTotal, failed, stopReason);
+        HasIssues = hasIssues;
         if (failed.Count > 0)
         {
-            summary += $" / 失敗 {failed.Count} 件";
             LogLines.Add("");
             LogLines.Add($"===== 失敗した対象: {string.Join(", ", failed)}");
         }
-        if (stopReason is not null)
-            summary += $" — {stopReason}";
         ResultText = summary;
         LogLines.Add($"===== {summary}");
     }
