@@ -72,8 +72,8 @@
 
 ### 1-2. THIRD-PARTY-NOTICES.md の作成 (S)
 
-- [ ] 依存ライブラリのライセンス表記ファイルを作る
-- [ ] Typography.OpenFont / Typography.GlyphLayout (Emoji.Wpf 経由の transitive) のライセンスを確認して追記する
+- [x] 依存ライブラリのライセンス表記ファイルを作る (2026-07-28)
+- [x] Typography.OpenFont / Typography.GlyphLayout のライセンスを確認 → MIT (一部 Apache-2.0 / FreeType License 等の混在)。あわせて Emoji.Wpf 同梱の Twemoji Mozilla フォント内の Twemoji アートワーク (CC-BY 4.0, © Twitter) の帰属表示も追加 (2026-07-28)
 
 監査で確定した依存一覧:
 
@@ -92,21 +92,21 @@
 
 ### 1-3. ソースから実在ハンドルを除去 (S)
 
-- [ ] `viewer/TweetViewer.Tests/LinkifierTests.cs:55,57` — `@dankogai` の実在ブログ URL・ハッシュタグを架空のものに差し替え
-- [ ] `viewer/TweetViewer/Data/TweetRepository.cs:69` — コメント「(dankogai 規模で 250ms → 数ms …)」を実在名を使わない言い方に
-- [ ] `tests/test_followings.py:57` — コメントの `@Lichten18` (所有者自身のハンドルとフォロー数) を「フォロー数がページサイズ未満のアカウント」等の一般表現に
-- [ ] `viewer/TweetViewer.Tests/FetchBudgetTests.cs:10` ほかの `elonmusk` 類も機械的に架空名へ (低優先)
+- [x] `viewer/TweetViewer.Tests/LinkifierTests.cs` — 架空チャンネル (`examplech` / `@example_ch`) に差し替え (2026-07-28)
+- [x] `viewer/TweetViewer/Data/TweetRepository.cs` — 「数万ツイート規模のアーカイブで」に言い換え (2026-07-28)
+- [x] `tests/test_followings.py` — 「フォローが 1 ページに収まるアカウント」に一般化 (2026-07-28)
+- [x] `viewer/TweetViewer.Tests/FetchBudgetTests.cs` — `alice` に置換 (2026-07-28)
 
 ### 1-4. README への免責事項・利用上の注意の追加 (S)
 
-- [ ] 免責: Sorsa API の利用 (アカウント作成・課金・規約遵守) は利用者自身の責任であること
-- [ ] 取得データは第三者の著作物であり、ローカルでの個人利用に留めること (再配布しない)
-- [ ] X の利用規約に関する注意への言及。特に `README.md:81` の「公式 X API の 3,200 件制限なし」という比較表現は、煽り文句に見えないよう表現を見直す
-- [ ] 本ツールは X 社・Sorsa と無関係な個人開発物であることの明記
+- [x] 免責: Sorsa API の利用は利用者自身の責任であること (2026-07-28)
+- [x] 取得データは第三者の著作物であり、私的利用に留めること (2026-07-28)
+- [x] X の利用規約への言及。「公式 X API の 3,200 件制限なし」の比較表現は「全期間の取得に対応」に緩和 (2026-07-28)
+- [x] X 社・Sorsa と無関係な個人開発物であることの明記 (2026-07-28)
 
 ### 1-5. 配布フローの運用ルールを明文化 (S)
 
-- [ ] 「配布物は必ず `dotnet publish` の出力フォルダからのみ作る (作業ツリーを zip しない)」をルール化して README 開発者向けセクションに書く
+- [x] 「配布物は必ず `dotnet publish` の出力フォルダからのみ作る (作業ツリーを zip しない)」を README の「配布物の作成 (開発者向け)」節に明文化 (2026-07-28)
 
 理由: git 履歴はクリーンだが、**作業ツリーには実キー入りの `.env`・実在 4 アカウントのアーカイブ `data/`・生 API 応答 `probe_output/` が存在する**。フォルダごと zip する配布フローは事故が確定している。
 

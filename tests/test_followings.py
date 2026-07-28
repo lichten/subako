@@ -54,7 +54,8 @@ def test_継続するカーソル(value):
 
 
 def test_文字列ゼロのカーソルで終端とみなす():
-    # 実測された @Lichten18 の挙動: 39 人 + next_cursor="0" が返り続ける
+    # 実測された挙動: フォローが 1 ページに収まるアカウントでは
+    # 全員 + next_cursor="0" が返り続ける
     names, client = collect([page(["a", "b"], "0")])
 
     assert names == ["a", "b"]

@@ -7,7 +7,7 @@ public class FetchBudgetTests
 {
     // main.py の finally が必ず出す完了ログ (上限到達・API エラーでも出る)
     private const string CompletionLine =
-        "2026-07-27 11:14:23,456 INFO 完了: 新規保存=12件 / 総保存=3456件 / APIリクエスト=7回 / 保存先=data\\elonmusk";
+        "2026-07-27 11:14:23,456 INFO 完了: 新規保存=12件 / 総保存=3456件 / APIリクエスト=7回 / 保存先=data\\alice";
 
     [Fact]
     public void ParsesConsumedRequestsFromCompletionLine()

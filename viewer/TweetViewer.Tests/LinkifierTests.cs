@@ -52,9 +52,9 @@ public class LinkifierTests
     [Fact]
     public void RealTweetPattern()
     {
-        var text = "小飼「…」 https://ch.nicovideo.jp/dankogai/blomaga/ar2212530 @dankogai #小飼弾の論弾";
+        var text = "新刊「…」 https://ch.nicovideo.jp/examplech/blomaga/ar1234567 @example_ch #例のチャンネル";
         var segs = Linkifier.Split(text);
-        Assert.Equal("https://ch.nicovideo.jp/dankogai/blomaga/ar2212530", segs.Single(s => s.IsUrl).Text);
+        Assert.Equal("https://ch.nicovideo.jp/examplech/blomaga/ar1234567", segs.Single(s => s.IsUrl).Text);
         Assert.Equal(text, Reassemble(segs));
     }
 

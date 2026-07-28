@@ -66,7 +66,7 @@ public sealed class TweetRepository
                 """;
             // 単一アーカイブは PK (username, tweet_id) により重複しないため、
             // 窓関数を通さず ix_tweets_user_sort の索引ストリームで返す
-            // (dankogai 規模で 250ms → 数ms の差が毎ページ効く)
+            // (数万ツイート規模のアーカイブで 250ms → 数ms の差が毎ページ効く)
             cmd.CommandText = usernames.Count == 1
                 ? $"""
                   SELECT {columns}
