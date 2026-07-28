@@ -22,13 +22,13 @@ public partial class SearchBackfillDialog : Window
                 DateTimeStyles.None, out _))
         {
             MessageBox.Show("遡る開始日は YYYY-MM-DD 形式で指定してください。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         if (!int.TryParse(MaxRequestsBox.Text.Trim(), out var value) || value <= 0)
         {
             MessageBox.Show("最大リクエスト数は正の整数で指定してください。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         Since = since;

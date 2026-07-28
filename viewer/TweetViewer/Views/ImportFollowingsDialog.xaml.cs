@@ -63,7 +63,7 @@ public partial class ImportFollowingsDialog : Window
         if (source.Length == 0)
         {
             MessageBox.Show("フォロー元アカウントを入力してください。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         var selected = _items.Where(i => i.IsChecked).Select(i => i.TagId).ToList();
@@ -72,13 +72,13 @@ public partial class ImportFollowingsDialog : Window
         {
             // タグ無しで数千件登録すると、後からその集合を選び直す手段が無くなる
             MessageBox.Show("タグを 1 つ以上選ぶか、新しいタグ名を入力してください。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         if (!int.TryParse(MaxRequestsBox.Text.Trim(), out var value) || value <= 0)
         {
             MessageBox.Show("最大リクエスト数は正の整数で指定してください。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         SourceUsername = source;

@@ -92,7 +92,7 @@ public partial class MainWindow : Window
             {
                 var run = MessageBox.Show(
                     $"@{added.Username} を追加しました。今すぐツイートを取得しますか?",
-                    "TweetViewer", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                    AppInfo.Name, MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (run == MessageBoxResult.Yes)
                     StartFetch(added.Username, FetchMode.Update, maxRequests: null);
             }
@@ -110,7 +110,7 @@ public partial class MainWindow : Window
         {
             var run = MessageBox.Show(
                 $"@{added.Username} を追加しました。今すぐツイートを取得しますか?",
-                "TweetViewer", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                AppInfo.Name, MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (run == MessageBoxResult.Yes)
                 StartFetch(added.Username, FetchMode.Update, maxRequests: null);
         }
@@ -293,7 +293,7 @@ public partial class MainWindow : Window
         if (MainViewModel.NormalizeUsername(dialog.SourceUsername) is not { } source)
         {
             MessageBox.Show("ユーザー名は英数字と _ のみ使用できます。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         var tagIds = dialog.SelectedTagIds;
@@ -308,7 +308,7 @@ public partial class MainWindow : Window
                 $"@{source} の取得済みフォロー一覧 ({saved:N0} 件) があります。\n" +
                 "API を使わずにこれを登録しますか?\n" +
                 "「いいえ」を選ぶと取得し直します。",
-                "TweetViewer", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                AppInfo.Name, MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
             if (reuse == MessageBoxResult.Cancel)
                 return;
             if (reuse == MessageBoxResult.Yes)
@@ -345,7 +345,7 @@ public partial class MainWindow : Window
             $"@{source} のフォロー {count:N0} 件をユーザーとして登録します。よろしいですか?\n\n" +
             "ツイートは取得しません。登録後にタグで絞り込んでから" +
             "「表示中をすべて更新...」を実行してください。",
-            "TweetViewer", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            AppInfo.Name, MessageBoxButton.OKCancel, MessageBoxImage.Question);
         if (ok != MessageBoxResult.OK)
         {
             Vm.StatusText = "登録を中止しました (取得したフォロー一覧は保存済みで、" +
@@ -429,7 +429,7 @@ public partial class MainWindow : Window
     private void ReportDeleteFailure(string? error)
     {
         if (error is not null)
-            MessageBox.Show(error, "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(error, AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     /// <summary>動画リンクのサムネイルをクリックしたら動画ページをブラウザで開く。</summary>

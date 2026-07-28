@@ -22,7 +22,7 @@ public partial class ManageTagsDialog : Window
         {
             var result = MessageBox.Show(
                 $"「{tag.Name}」は {tag.UserCount} 人に付いています。削除しますか?",
-                "TweetViewer", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                AppInfo.Name, MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes)
                 return;
         }

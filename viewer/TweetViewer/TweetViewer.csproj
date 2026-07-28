@@ -6,6 +6,15 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- アプリ名は Subako (docs/release-plan.md §0-1)。exe 名だけ変え、
+         名前空間・フォルダ名は churn を避けて TweetViewer のまま据え置く -->
+    <AssemblyName>Subako</AssemblyName>
+    <RootNamespace>TweetViewer</RootNamespace>
+    <Version>0.1.0</Version>
+    <Product>Subako</Product>
+    <Authors>Lichten</Authors>
+    <Copyright>© 2026 Lichten</Copyright>
+    <Description>X (Twitter) のユーザー単位アーカイブをローカルに保存・閲覧するビューア</Description>
   </PropertyGroup>
 
   <ItemGroup>

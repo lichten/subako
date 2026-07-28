@@ -18,8 +18,8 @@ public partial class App : Application
         {
             MessageBox.Show(
                 "リポジトリ(main.py のあるフォルダ)を検出できませんでした。\n" +
-                "%APPDATA%\\TweetViewer\\settings.json の RepoDir を設定してください。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Error);
+                $"{AppSettings.SettingsPath} の RepoDir を設定してください。",
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
             return;
         }

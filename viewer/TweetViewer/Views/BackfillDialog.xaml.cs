@@ -17,7 +17,7 @@ public partial class BackfillDialog : Window
         if (!int.TryParse(MaxRequestsBox.Text.Trim(), out var value) || value <= 0)
         {
             MessageBox.Show("最大リクエスト数は正の整数で指定してください。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         MaxRequests = value;

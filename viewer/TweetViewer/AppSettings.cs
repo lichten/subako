@@ -31,7 +31,13 @@ public sealed class AppSettings
     /// <summary>前回終了時のタグフィルタ。null = すべて表示、-1 = タグなし、それ以外 = tag_id。</summary>
     public long? TagFilterId { get; set; }
 
-    private static string SettingsPath => Path.Combine(
+    /// <summary>設定ファイルの場所 (エラーメッセージでの案内用に公開)。</summary>
+    public static string SettingsPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        AppInfo.Name, "settings.json");
+
+    /// <summary>旧名 (TweetViewer) 時代の設定ファイル。初回起動時に移行する。</summary>
+    private static string LegacySettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "TweetViewer", "settings.json");
 
@@ -41,6 +47,7 @@ public sealed class AppSettings
 
     public static AppSettings Load()
     {
+        MigrateLegacySettings();
         AppSettings settings = new();
         try
         {
@@ -59,6 +66,26 @@ public sealed class AppSettings
                 settings.RepoDir = detected;
         }
         return settings;
+    }
+
+    /// <summary>
+    /// アプリ名変更 (TweetViewer → Subako) に伴う設定の引き継ぎ。コピーであって移動では
+    /// ないので、旧バージョンに戻しても設定は残っている。失敗しても既定値で起動できる。
+    /// </summary>
+    private static void MigrateLegacySettings()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath) && File.Exists(LegacySettingsPath))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+                File.Copy(LegacySettingsPath, SettingsPath);
+            }
+        }
+        catch (Exception)
+        {
+            // 移行に失敗しても既定値で継続 (壊れた設定と同じ扱い)
+        }
     }
 
     public void Save()

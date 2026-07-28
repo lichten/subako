@@ -15,7 +15,7 @@ public static class Browser
         {
             System.Windows.MessageBox.Show(
                 $"ブラウザを起動できませんでした: {ex.Message}",
-                "TweetViewer", System.Windows.MessageBoxButton.OK,
+                AppInfo.Name, System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);
         }
     }

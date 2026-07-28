@@ -18,7 +18,7 @@ public static partial class NicoThumbnail
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("TweetViewer/1.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(AppInfo.UserAgent);
         return client;
     }
 

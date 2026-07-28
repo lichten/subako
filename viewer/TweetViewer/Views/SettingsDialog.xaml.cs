@@ -38,7 +38,7 @@ public partial class SettingsDialog : Window
         if (dataDir.Length > 0 && !Directory.Exists(dataDir))
         {
             MessageBox.Show("指定されたデータフォルダが存在しません。",
-                "TweetViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -50,7 +50,7 @@ public partial class SettingsDialog : Window
         {
             var restart = MessageBox.Show(
                 "データフォルダの変更は再起動後に反映されます。今すぐ再起動しますか?",
-                "TweetViewer", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                AppInfo.Name, MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (restart == MessageBoxResult.Yes && Environment.ProcessPath is { } exe)
             {
                 Process.Start(exe);
