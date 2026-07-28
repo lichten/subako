@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace TweetViewer.Behaviors;
 
@@ -27,25 +28,70 @@ public static class ImagePathBehavior
     public static readonly DependencyProperty DecodeWidthProperty =
         DependencyProperty.RegisterAttached(
             "DecodeWidth", typeof(int), typeof(ImagePathBehavior),
-            new PropertyMetadata(DefaultDecodeWidth));
+            new PropertyMetadata(DefaultDecodeWidth, OnDecodeWidthChanged));
 
     public static int GetDecodeWidth(DependencyObject obj) => (int)obj.GetValue(DecodeWidthProperty);
     public static void SetDecodeWidth(DependencyObject obj, int value) => obj.SetValue(DecodeWidthProperty, value);
 
-    private static async void OnPathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    /// <summary>読み込み世代。積んだ後に Path / DecodeWidth が動いたかの判定に使う。</summary>
+    private static readonly DependencyProperty ReloadTokenProperty =
+        DependencyProperty.RegisterAttached(
+            "ReloadToken", typeof(int), typeof(ImagePathBehavior), new PropertyMetadata(0));
+
+    /// <summary>Dispatcher に未実行の読み込みが積まれているか。</summary>
+    private static readonly DependencyProperty ReloadPendingProperty =
+        DependencyProperty.RegisterAttached(
+            "ReloadPending", typeof(bool), typeof(ImagePathBehavior), new PropertyMetadata(false));
+
+    private static void OnPathChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not Image image)
             return;
-
-        var path = (string?)e.NewValue;
+        // 別ツイートへのリサイクル。前の絵を必ず消してから読み直す
         image.Source = null;
-        if (string.IsNullOrEmpty(path))
-            return;
+        ScheduleReload(image);
+    }
 
+    private static void OnDecodeWidthChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        // 表示サイズ変更。Source は残したまま差し替える (消すと拡大のたびに灰色の箱が一瞬出る)
+        if (d is Image image)
+            ScheduleReload(image);
+    }
+
+    /// <summary>
+    /// Path と DecodeWidth はコンテナのリサイクル時に同じ DataContext 更新で続けて変わる。
+    /// Dispatcher に 1 回だけ積んでまとめ、2 重デコード (スクロール中のディスク/CPU 倍増) を防ぐ。
+    /// </summary>
+    private static void ScheduleReload(Image image)
+    {
+        // pending の確認より先に世代を進める。積んである処理が最新値を読むようにするため
+        image.SetValue(ReloadTokenProperty, (int)image.GetValue(ReloadTokenProperty) + 1);
+        if ((bool)image.GetValue(ReloadPendingProperty))
+            return;
+        image.SetValue(ReloadPendingProperty, true);
+        // Loaded (6) は Input (5) より上なので連続スクロール中も飢餓にならず、
+        // レイアウト後に走るので measure と競合しない
+        _ = image.Dispatcher.InvokeAsync(() =>
+        {
+            image.SetValue(ReloadPendingProperty, false);
+            _ = ReloadAsync(image, (int)image.GetValue(ReloadTokenProperty));
+        }, DispatcherPriority.Loaded);
+    }
+
+    private static async Task ReloadAsync(Image image, int token)
+    {
+        var path = GetPath(image);
+        if (string.IsNullOrEmpty(path))
+        {
+            image.Source = null;
+            return;
+        }
+        // 依存関係プロパティは UI スレッド専有。Task.Run の中から読まないよう先に取り出す
         var decodeWidth = GetDecodeWidth(image);
         var bitmap = await Task.Run(() => Decode(path, decodeWidth));
-        // デコード中にリサイクルで別パスに変わっていたら捨てる
-        if (GetPath(image) == path)
+        // デコード中にリサイクル / サイズ変更が入っていたら捨てる (後発の読み込みが正しい絵を入れる)
+        if ((int)image.GetValue(ReloadTokenProperty) == token)
             image.Source = bitmap;
     }
 

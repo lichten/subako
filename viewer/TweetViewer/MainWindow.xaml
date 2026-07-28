@@ -23,6 +23,58 @@
             <MenuItem Header="既読/未読を切り替え"
                       Command="{Binding ToggleReadCommand}" />
         </ContextMenu>
+
+        <!-- 画像の右クリックメニュー。DataContext は PlacementTarget (画像の Border) から
+             伝播するので TweetImageViewModel。共有インスタンス 1 つで全画像に効く。
+             倍率はセッション限りで永続化しない。
+             チェック印に IsCheckable/IsChecked を使わないのは、クリック時に IsChecked へ
+             ローカル値が書かれてバインドが恒久的に壊れるため -->
+        <ContextMenu x:Key="ImageSizeContextMenu">
+            <MenuItem Header="小さく (×0.5)" Command="{Binding SetScaleCommand}"
+                      CommandParameter="{x:Static vm:ImageScale.Half}">
+                <MenuItem.Icon>
+                    <TextBlock Text="✓" Visibility="{Binding Scale,
+                        Converter={StaticResource EqualsToVis},
+                        ConverterParameter={x:Static vm:ImageScale.Half}}" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="等倍に戻す" Command="{Binding SetScaleCommand}"
+                      CommandParameter="{x:Static vm:ImageScale.Normal}">
+                <MenuItem.Icon>
+                    <TextBlock Text="✓" Visibility="{Binding Scale,
+                        Converter={StaticResource EqualsToVis},
+                        ConverterParameter={x:Static vm:ImageScale.Normal}}" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="大きく (×2)" Command="{Binding SetScaleCommand}"
+                      CommandParameter="{x:Static vm:ImageScale.Double}">
+                <MenuItem.Icon>
+                    <TextBlock Text="✓" Visibility="{Binding Scale,
+                        Converter={StaticResource EqualsToVis},
+                        ConverterParameter={x:Static vm:ImageScale.Double}}" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="もっと大きく (×4)" Command="{Binding SetScaleCommand}"
+                      CommandParameter="{x:Static vm:ImageScale.Quadruple}">
+                <MenuItem.Icon>
+                    <TextBlock Text="✓" Visibility="{Binding Scale,
+                        Converter={StaticResource EqualsToVis},
+                        ConverterParameter={x:Static vm:ImageScale.Quadruple}}" />
+                </MenuItem.Icon>
+            </MenuItem>
+        </ContextMenu>
+
+        <!-- 本文/引用先で共通。基準サイズは VM 側 (ImageBaseSize) が持つので
+             1 つのテンプレートで両方まかなえる -->
+        <DataTemplate x:Key="TweetImageTemplate" DataType="{x:Type vm:TweetImageViewModel}">
+            <Border CornerRadius="8" Margin="0,0,6,6" Background="#F0F0F0"
+                    MaxHeight="{Binding MaxDisplayHeight}" MaxWidth="{Binding MaxDisplayWidth}"
+                    ContextMenu="{StaticResource ImageSizeContextMenu}">
+                <Image behaviors:ImagePathBehavior.DecodeWidth="{Binding DecodeWidth}"
+                       behaviors:ImagePathBehavior.Path="{Binding LocalPath}"
+                       Stretch="Uniform" StretchDirection="DownOnly" />
+            </Border>
+        </DataTemplate>
     </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -325,23 +377,15 @@
                                     <TextBlock behaviors:LinkifiedTextBehavior.Text="{Binding DisplayText}"
                                                TextWrapping="Wrap" Margin="0,4,0,0" FontSize="14" />
 
-                                    <!-- 画像 -->
-                                    <ItemsControl ItemsSource="{Binding ImagePaths}" Margin="0,6,0,0"
+                                    <!-- 画像 (右クリックで表示サイズを変更。セッション限り) -->
+                                    <ItemsControl ItemsSource="{Binding Images}" Margin="0,6,0,0"
+                                                  ItemTemplate="{StaticResource TweetImageTemplate}"
                                                   Visibility="{Binding HasImages, Converter={StaticResource BoolToVis}}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <WrapPanel />
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border CornerRadius="8" Margin="0,0,6,6" MaxHeight="280"
-                                                        MaxWidth="400" Background="#F0F0F0">
-                                                    <Image behaviors:ImagePathBehavior.Path="{Binding}"
-                                                           Stretch="Uniform" StretchDirection="DownOnly" />
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
                                     </ItemsControl>
 
                                     <!-- 動画リンクのサムネイル (YouTube / ニコニコ動画) -->
@@ -391,24 +435,15 @@
                                             </StackPanel>
                                             <TextBlock behaviors:LinkifiedTextBehavior.Text="{Binding QuotedText}"
                                                        TextWrapping="Wrap" FontSize="13" Margin="0,2,0,0" />
-                                            <!-- 引用先の画像 (本文より小さめ) -->
-                                            <ItemsControl ItemsSource="{Binding QuotedImagePaths}" Margin="0,6,0,0"
+                                            <!-- 引用先の画像 (基準は本文より小さめ。VM の ImageBaseSize.Quoted) -->
+                                            <ItemsControl ItemsSource="{Binding QuotedImages}" Margin="0,6,0,0"
+                                                          ItemTemplate="{StaticResource TweetImageTemplate}"
                                                           Visibility="{Binding HasQuotedImages, Converter={StaticResource BoolToVis}}">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
                                                         <WrapPanel />
                                                     </ItemsPanelTemplate>
                                                 </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border CornerRadius="8" Margin="0,0,6,6" MaxHeight="180"
-                                                                MaxWidth="260" Background="#F0F0F0">
-                                                            <Image behaviors:ImagePathBehavior.Path="{Binding}"
-                                                                   behaviors:ImagePathBehavior.DecodeWidth="260"
-                                                                   Stretch="Uniform" StretchDirection="DownOnly" />
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                             <!-- 引用先本文の動画リンクのサムネイル -->
                                             <ItemsControl ItemsSource="{Binding QuotedLinkThumbnails}" Margin="0,6,0,0"

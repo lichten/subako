@@ -35,7 +35,7 @@ public sealed class QuotedImageTests : IAsyncDisposable
         }
     }
 
-    /// <summary>ResolveImagePaths は実ファイルが無い行を捨てるので、ダミーを置いておく。</summary>
+    /// <summary>ResolveImages は実ファイルが無い行を捨てるので、ダミーを置いておく。</summary>
     private void PlaceImage(string tweetId, int index, string ext = "jpg")
     {
         File.WriteAllBytes(Path.Combine(_dataDir, $"{tweetId}_{index}.{ext}"), [0]);
@@ -78,13 +78,13 @@ public sealed class QuotedImageTests : IAsyncDisposable
         };
         var vm = CreateItem(media, QuoteRow("100", "引用本文"));
 
-        Assert.Equal(2, vm.ImagePaths.Count);          // Own + Retweeted
-        Assert.EndsWith("100_1.jpg", vm.ImagePaths[0]);
-        Assert.EndsWith("100_3.jpg", vm.ImagePaths[1]);
+        Assert.Equal(2, vm.Images.Count);               // Own + Retweeted
+        Assert.EndsWith("100_1.jpg", vm.Images[0].LocalPath);
+        Assert.EndsWith("100_3.jpg", vm.Images[1].LocalPath);
         Assert.True(vm.HasImages);
 
-        Assert.Single(vm.QuotedImagePaths);            // Quoted のみ
-        Assert.EndsWith("100_2.jpg", vm.QuotedImagePaths[0]);
+        Assert.Single(vm.QuotedImages);                 // Quoted のみ
+        Assert.EndsWith("100_2.jpg", vm.QuotedImages[0].LocalPath);
         Assert.True(vm.HasQuotedImages);
     }
 
@@ -100,8 +100,25 @@ public sealed class QuotedImageTests : IAsyncDisposable
         var vm = CreateItem(media, QuoteRow("101", null));
         Assert.True(vm.HasQuotedImages);
         Assert.True(vm.HasQuote);
-        Assert.Empty(vm.ImagePaths);
+        Assert.Empty(vm.Images);
         Assert.False(vm.HasImages);
+    }
+
+    [Fact]
+    public void 本文と引用先で基準サイズが違う()
+    {
+        // 基準サイズの取り違えは XAML でしか観測できなくなるため、ここで固定する
+        PlaceImage("104", 1);
+        PlaceImage("104", 2);
+        var media = new[]
+        {
+            new TweetMediaRow("104", 1, "https://pbs.twimg.com/media/G.jpg", "jpg", MediaOrigin.Own),
+            new TweetMediaRow("104", 2, "https://pbs.twimg.com/media/H.jpg", "jpg", MediaOrigin.Quoted),
+        };
+        var vm = CreateItem(media, QuoteRow("104", "引用本文"));
+
+        Assert.Equal(400, vm.Images[0].MaxDisplayWidth);         // ImageBaseSize.Body
+        Assert.Equal(260, vm.QuotedImages[0].MaxDisplayWidth);   // ImageBaseSize.Quoted
     }
 
     [Fact]
@@ -113,8 +130,8 @@ public sealed class QuotedImageTests : IAsyncDisposable
             new TweetMediaRow("102", 1, "https://pbs.twimg.com/media/E.jpg", "jpg", MediaOrigin.Own),
         };
         var vm = CreateItem(media, QuoteRow("102", "テキストのみ"));
-        Assert.Single(vm.ImagePaths);
-        Assert.Empty(vm.QuotedImagePaths);
+        Assert.Single(vm.Images);
+        Assert.Empty(vm.QuotedImages);
         Assert.False(vm.HasQuotedImages);
         Assert.True(vm.HasQuote);
     }
@@ -128,7 +145,7 @@ public sealed class QuotedImageTests : IAsyncDisposable
             new TweetMediaRow("103", 1, "https://pbs.twimg.com/media/F.jpg", "jpg", MediaOrigin.Quoted),
         };
         var vm = CreateItem(media, QuoteRow("103", "本文あり"));
-        Assert.Empty(vm.QuotedImagePaths);
+        Assert.Empty(vm.QuotedImages);
         Assert.False(vm.HasQuotedImages);
         Assert.True(vm.HasQuote);   // テキストがあるのでブロック自体は出る
     }

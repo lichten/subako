@@ -25,10 +25,10 @@ public sealed partial class TweetItemViewModel : ObservableObject
     private string? _quotedIconPath;
 
     /// <summary>本文と RT元の画像 (本文欄に表示)。</summary>
-    public IReadOnlyList<string> ImagePaths { get; }
+    public IReadOnlyList<TweetImageViewModel> Images { get; }
 
     /// <summary>引用先ツイートの画像 (引用ブロック内に表示)。</summary>
-    public IReadOnlyList<string> QuotedImagePaths { get; }
+    public IReadOnlyList<TweetImageViewModel> QuotedImages { get; }
 
     /// <summary>本文中の動画リンクのサムネイル (本文欄に表示)。</summary>
     public IReadOnlyList<LinkThumbnailViewModel> LinkThumbnails { get; }
@@ -48,8 +48,8 @@ public sealed partial class TweetItemViewModel : ObservableObject
         Row = row;
         _isRead = row.IsRead;
         OwnerDisplayName = ownerDisplayName;
-        ImagePaths = ResolveImagePaths(media, imagesDir, m => m.Origin != MediaOrigin.Quoted);
-        QuotedImagePaths = ResolveImagePaths(media, imagesDir, m => m.Origin == MediaOrigin.Quoted);
+        Images = ResolveImages(media, imagesDir, m => m.Origin != MediaOrigin.Quoted, ImageBaseSize.Body);
+        QuotedImages = ResolveImages(media, imagesDir, m => m.Origin == MediaOrigin.Quoted, ImageBaseSize.Quoted);
 
         var mainUrl = (IsRetweet ? Row.RtIconUrl : null) ?? Row.AuthorIconUrl ?? ownerIconUrl;
         ResolveIcon(iconCache, mainUrl, path => MainIconPath = path);
@@ -106,7 +106,7 @@ public sealed partial class TweetItemViewModel : ObservableObject
     public bool IsRetweet => Row.Type == TweetType.Retweet;
     public bool IsReply => Row.Type == TweetType.Reply;
     public bool IsQuote => Row.Type == TweetType.Quote;
-    public bool HasImages => ImagePaths.Count > 0;
+    public bool HasImages => Images.Count > 0;
 
     /// <summary>行の実投稿者名。検索バケットでは行ごとに異なる (author 列がない旧データは owner)。</summary>
     private string AuthorName => Row.AuthorDisplayName ?? Row.AuthorUsername ?? OwnerDisplayName;
@@ -149,7 +149,7 @@ public sealed partial class TweetItemViewModel : ObservableObject
     public string QuotedText => Row.QuotedText ?? "";
     // 画像だけで本文が空の引用でもブロックを出す
     public bool HasQuote => IsQuote && (!string.IsNullOrEmpty(Row.QuotedText) || HasQuotedImages);
-    public bool HasQuotedImages => QuotedImagePaths.Count > 0;
+    public bool HasQuotedImages => QuotedImages.Count > 0;
 
     /// <summary>本文表示。RT は truncate された "RT @x: …" ではなく元ツイート全文を出す。</summary>
     public string DisplayText =>
@@ -202,13 +202,15 @@ public sealed partial class TweetItemViewModel : ObservableObject
     /// <summary>既読化(スクロール検知から)。二重呼び出しは owner 側で無視。</summary>
     public void MarkReadFromScroll() => _owner.MarkSeen(this);
 
-    private static List<string> ResolveImagePaths(
-        IReadOnlyList<TweetMediaRow> media, string imagesDir, Func<TweetMediaRow, bool> filter)
+    private static List<TweetImageViewModel> ResolveImages(
+        IReadOnlyList<TweetMediaRow> media, string imagesDir, Func<TweetMediaRow, bool> filter,
+        ImageBaseSize baseSize)
     {
         return media
             .Where(filter)
             .Select(m => LocalMediaFiles.Resolve(imagesDir, m.TweetId, m.Index, m.Ext))
-            .OfType<string>()
+            .OfType<string>()   // ダウンロード失敗で実ファイルが無い行は落とす
+            .Select(path => new TweetImageViewModel(path, baseSize))
             .ToList();
     }
 }

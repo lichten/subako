@@ -8,5 +8,6 @@
         <conv:InverseBoolConverter x:Key="InverseBool" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:DivideConverter x:Key="Divide" />
+        <conv:EqualsToVisibilityConverter x:Key="EqualsToVis" />
     </Application.Resources>
 </Application>
