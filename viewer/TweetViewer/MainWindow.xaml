@@ -263,6 +263,7 @@
                 <b:Interaction.Behaviors>
                     <behaviors:ScrollToTopOnResetBehavior />
                     <behaviors:ScrollReadBehavior />
+                    <behaviors:KeyboardScrollBehavior />
                     <behaviors:InfiniteScrollBehavior LoadMoreCommand="{Binding LoadMoreCommand}" />
                 </b:Interaction.Behaviors>
                 <ListBox.ItemContainerStyle>
