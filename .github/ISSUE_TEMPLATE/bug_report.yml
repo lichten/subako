@@ -1,0 +1,45 @@
+name: 不具合報告
+description: 動作がおかしい・クラッシュするなどの報告
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: バージョン
+      description: exe を右クリック → プロパティ → 詳細 で確認できます
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きたか
+      description: 期待した動作と実際の動作
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: ログ
+      description: >
+        %APPDATA%\Subako\logs\ にある当日のログファイルをここに添付
+        (ドラッグ&ドロップ) してください。クラッシュ時のダイアログからも
+        ログフォルダを開けます。
+    validations:
+      required: false
+  - type: input
+    id: env
+    attributes:
+      label: 環境
+      placeholder: "Windows 11 24H2 / モニタ 2 台 (150%/100%)"
+    validations:
+      required: false

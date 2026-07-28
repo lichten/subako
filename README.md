@@ -1,5 +1,9 @@
 # Subako (巣箱)
 
+[![CI](https://github.com/lichten/subako/actions/workflows/ci.yml/badge.svg)](https://github.com/lichten/subako/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/lichten/subako)](../../releases)
+
 <img src="assets/icon/subako-256.png" width="96" alt="Subako icon" align="right" />
 
 X (Twitter) の特定ユーザーのツイートを**全期間ローカルに保存**し、オフラインで
