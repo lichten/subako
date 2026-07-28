@@ -15,6 +15,17 @@ copy .env.example .env
 
 API キーは https://api.sorsa.io のダッシュボードから取得できます(新規アカウントに 100 リクエストの無料枠あり)。
 
+## テスト
+
+```powershell
+pip install -r requirements-dev.txt
+pytest                                  # Python 側 (API は消費しない)
+dotnet test viewer\TweetViewer.Tests\TweetViewer.Tests.csproj   # ビューア側
+```
+
+`pytest` は偽クライアントを差し込むので API キーもネットワークも不要です。
+ビューアが起動中だと exe がロックされて `dotnet test` が失敗するので、先に終了してください。
+
 ## 使い方
 
 ### 1. 疎通確認(推奨: 最初に実行)

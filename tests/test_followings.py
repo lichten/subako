@@ -1,22 +1,15 @@
-"""/follows のページング終了条件のテスト (標準ライブラリの unittest のみ)。
+"""/follows のページング終了条件のテスト。
 
-実行: python -m unittest discover -s tests
+実行: pytest  (依存は requirements-dev.txt)
 
 このテストが存在する理由: /follows は終端を next_cursor="0" (文字列) で表すため
 falsy 判定では止まらず、しかも "0" を送ると 1 ページ目が返り続ける。実 API での
 確認をフォロー数の多いアカウントだけで行うと終端に到達せず見逃す。
 """
-import logging
-import os
-import sys
-import unittest
+import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from main import collect_followings, is_terminal_cursor          # noqa: E402
-from sorsa_fetcher.fetcher import RequestBudgetExhausted          # noqa: E402
-
-logging.disable(logging.CRITICAL)
+from main import collect_followings, is_terminal_cursor
+from sorsa_fetcher.fetcher import RequestBudgetExhausted
 
 
 class FakeClient:
@@ -42,112 +35,101 @@ def page(usernames, next_cursor):
     }
 
 
-class IsTerminalCursorTests(unittest.TestCase):
-    def test_終端とみなす値(self):
-        for value in (None, "", "  ", "0", "-1"):
-            self.assertTrue(is_terminal_cursor(value), repr(value))
-
-    def test_継続する値(self):
-        for value in ("DAAHCgABHN3ukRE", "1", "00", "0abc"):
-            self.assertFalse(is_terminal_cursor(value), repr(value))
+def collect(responses, max_requests=None):
+    """(取得できた username, 使ったクライアント) を返す。"""
+    client = FakeClient(responses)
+    users = []
+    collect_followings(client, "src", users, max_requests)
+    return [u["username"] for u in users], client
 
 
-class CollectFollowingsTests(unittest.TestCase):
-    def test_文字列ゼロのカーソルで終端とみなす(self):
-        # 実測された @Lichten18 の挙動: 39 人 + next_cursor="0" が返り続ける
-        client = FakeClient([page(["a", "b"], "0")])
-        users = []
-
-        collect_followings(client, "src", users)
-
-        self.assertEqual(["a", "b"], [u["username"] for u in users])
-        self.assertEqual(1, client.request_count)
-
-    def test_カーソルが無い場合も終端(self):
-        client = FakeClient([page(["a"], None)])
-        users = []
-
-        collect_followings(client, "src", users)
-
-        self.assertEqual(1, client.request_count)
-
-    def test_複数ページを連結する(self):
-        client = FakeClient([
-            page(["a", "b"], "c1"),
-            page(["c"], "0"),
-        ])
-        users = []
-
-        collect_followings(client, "src", users)
-
-        self.assertEqual(["a", "b", "c"], [u["username"] for u in users])
-        self.assertEqual([None, "c1"], client.cursors)
-
-    def test_重複は除去する(self):
-        client = FakeClient([
-            page(["a", "b"], "c1"),
-            page(["b", "c"], "0"),
-        ])
-        users = []
-
-        collect_followings(client, "src", users)
-
-        self.assertEqual(["a", "b", "c"], [u["username"] for u in users])
-
-    def test_新規0件のページで打ち切る(self):
-        # 番兵値を知らなくても抜けられること (本命の安全網)。
-        # カーソルは毎回変わるので終端判定にもカーソル同一判定にも引っかからない
-        client = FakeClient([
-            page(["a"], "c1"),
-            page(["a"], "c2"),
-            page(["a"], "c3"),
-        ])
-        users = []
-
-        collect_followings(client, "src", users)
-
-        self.assertEqual(["a"], [u["username"] for u in users])
-        self.assertEqual(2, client.request_count)
-
-    def test_空ページで打ち切る(self):
-        client = FakeClient([
-            page(["a"], "c1"),
-            page([], "c2"),
-        ])
-        users = []
-
-        collect_followings(client, "src", users)
-
-        self.assertEqual(2, client.request_count)
-
-    def test_カーソルが前回と同じなら打ち切る(self):
-        # 新規は増え続けるがカーソルが進まないケース
-        client = FakeClient([
-            page(["a"], "same"),
-            page(["b"], "same"),
-            page(["c"], "same"),
-        ])
-        users = []
-
-        collect_followings(client, "src", users)
-
-        self.assertEqual(["a", "b"], [u["username"] for u in users])
-        self.assertEqual(2, client.request_count)
-
-    def test_上限に達したら例外だが取得済みは残る(self):
-        client = FakeClient([
-            page(["a"], "c1"),
-            page(["b"], "c2"),
-            page(["c"], "c3"),
-        ])
-        users = []
-
-        with self.assertRaises(RequestBudgetExhausted):
-            collect_followings(client, "src", users, max_requests=2)
-
-        self.assertEqual(["a", "b"], [u["username"] for u in users])
-        self.assertEqual(2, client.request_count)
+@pytest.mark.parametrize("value", [None, "", "  ", "0", "-1"])
+def test_終端とみなすカーソル(value):
+    assert is_terminal_cursor(value)
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.mark.parametrize("value", ["DAAHCgABHN3ukRE", "1", "00", "0abc"])
+def test_継続するカーソル(value):
+    assert not is_terminal_cursor(value)
+
+
+def test_文字列ゼロのカーソルで終端とみなす():
+    # 実測された @Lichten18 の挙動: 39 人 + next_cursor="0" が返り続ける
+    names, client = collect([page(["a", "b"], "0")])
+
+    assert names == ["a", "b"]
+    assert client.request_count == 1
+
+
+def test_カーソルが無い場合も終端():
+    _, client = collect([page(["a"], None)])
+
+    assert client.request_count == 1
+
+
+def test_複数ページを連結する():
+    names, client = collect([
+        page(["a", "b"], "c1"),
+        page(["c"], "0"),
+    ])
+
+    assert names == ["a", "b", "c"]
+    assert client.cursors == [None, "c1"]
+
+
+def test_重複は除去する():
+    names, _ = collect([
+        page(["a", "b"], "c1"),
+        page(["b", "c"], "0"),
+    ])
+
+    assert names == ["a", "b", "c"]
+
+
+def test_新規0件のページで打ち切る():
+    # 番兵値を知らなくても抜けられること (本命の安全網)。
+    # カーソルは毎回変わるので終端判定にもカーソル同一判定にも引っかからない
+    names, client = collect([
+        page(["a"], "c1"),
+        page(["a"], "c2"),
+        page(["a"], "c3"),
+    ])
+
+    assert names == ["a"]
+    assert client.request_count == 2
+
+
+def test_空ページで打ち切る():
+    _, client = collect([
+        page(["a"], "c1"),
+        page([], "c2"),
+    ])
+
+    assert client.request_count == 2
+
+
+def test_カーソルが前回と同じなら打ち切る():
+    # 新規は増え続けるがカーソルが進まないケース
+    names, client = collect([
+        page(["a"], "same"),
+        page(["b"], "same"),
+        page(["c"], "same"),
+    ])
+
+    assert names == ["a", "b"]
+    assert client.request_count == 2
+
+
+def test_上限に達したら例外だが取得済みは残る():
+    client = FakeClient([
+        page(["a"], "c1"),
+        page(["b"], "c2"),
+        page(["c"], "c3"),
+    ])
+    users = []
+
+    with pytest.raises(RequestBudgetExhausted):
+        collect_followings(client, "src", users, max_requests=2)
+
+    assert [u["username"] for u in users] == ["a", "b"]
+    assert client.request_count == 2
