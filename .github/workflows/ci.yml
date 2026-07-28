@@ -1,0 +1,29 @@
+# PR / push ごとのビルドとテスト (docs/release-plan.md §4-3)
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: .NET build + test
+        run: dotnet test viewer/TweetViewer.Tests/TweetViewer.Tests.csproj -c Release
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python tests
+        run: |
+          pip install -r requirements-dev.txt
+          pytest

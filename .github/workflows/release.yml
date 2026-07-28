@@ -1,0 +1,55 @@
+# タグ push でビルド → zip + インストーラーをドラフト Release に添付する
+# (docs/release-plan.md §4-3)。リリース手順:
+#   1. csproj の <Version> をタグと同じ値にしておく
+#   2. git tag vX.Y.Z && git push origin vX.Y.Z
+#   3. Actions 完了後、GitHub のドラフト Release を確認して手動で公開する
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test viewer/TweetViewer.Tests/TweetViewer.Tests.csproj -c Release
+
+      - name: Version from tag
+        id: v
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Publish (self-contained single exe + fetcher 同梱)
+        run: >
+          dotnet publish viewer/TweetViewer/TweetViewer.csproj -c Release
+          -p:PublishProfile=win-x64 -p:Version=${{ steps.v.outputs.version }}
+
+      - name: Zip
+        shell: pwsh
+        run: >
+          Compress-Archive -Path viewer/TweetViewer/bin/publish/win-x64/*
+          -DestinationPath subako-${{ steps.v.outputs.version }}-win-x64.zip
+
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        run: iscc /DMyAppVersion=${{ steps.v.outputs.version }} installer\subako.iss
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            subako-*-win-x64.zip
+            installer/out/*.exe

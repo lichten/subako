@@ -188,28 +188,28 @@
 
 ### 4-1. publish 設定 (M)
 
-- [ ] self-contained + `PublishSingleFile` の publish profile を作る (.NET 10 Desktop Runtime を利用者に要求しない)
-- [ ] pdb を配布物から除外
-- [ ] fetcher 一式 (main.py / sorsa_fetcher / requirements.txt / .env.example) の同梱方法を publish に組み込む (2-1 と連動)
+- [x] self-contained + `PublishSingleFile` の publish profile (`Properties/PublishProfiles/win-x64.pubxml`) を作成 (2026-07-28)
+- [x] pdb を配布物から除外 (`DebugType=none`。出力に *.pdb ゼロを確認) (2026-07-28)
+- [x] fetcher 一式の同梱を csproj の `BundleFetcherAndNotices` ターゲットで実装 (main.py / sorsa_fetcher の *.py / requirements.txt / .env.example / LICENSE / THIRD-PARTY-NOTICES.md)。出力は単一 Subako.exe (約 138MB) + 同梱ファイルのみで `runtimes\` フォルダ無し (2026-07-28)
 - [ ] **クリーンな Windows (Windows Sandbox) で起動確認** — 開発機は .NET SDK も Python も入っているため、素の環境での検証が必須
-
-現状の `dotnet publish` はフレームワーク依存のフォルダ出力で、Runtime 別途インストール + `runtimes\` サブフォルダ持ちの「zip のフォルダ」しか作れない。
 
 ### 4-2. インストーラー (M)
 
-- [ ] Inno Setup でインストーラーを作る (無料・日本語 UI 対応・OSS 実績多数)。zip 版と両方配布する
+- [x] Inno Setup スクリプト (`installer/subako.iss`) を作成。日英 2 言語、per-user 既定、デスクトップアイコンは任意 (2026-07-28)
+- [ ] インストーラーの実機確認 (ローカルに Inno Setup 6 を入れて `iscc` するか、初回タグ push 時の Actions 生成物で確認)
 - [ ] 将来 Microsoft Store を目指す場合は MSIX を別途検討 (今回はスコープ外としてメモのみ)
 
 ### 4-3. GitHub Actions (M)
 
-- [ ] CI: PR / push ごとに `dotnet build` + `dotnet test` + `pytest` (現状 CI が一切無い)
-- [ ] リリース: タグ push で publish → zip + インストーラーを生成し GitHub Releases に添付
+- [x] CI (`.github/workflows/ci.yml`): push/PR ごとに dotnet test + pytest (windows-latest) (2026-07-28)
+- [x] リリース (`.github/workflows/release.yml`): `v*` タグ push で test → publish → zip + Inno Setup インストーラーを**ドラフト** Release に添付 (公開は手動確認後) (2026-07-28)
+- [ ] 初回 push 後に CI が green になることを確認
 
 ### 4-4. README の書き直し (M)
 
-- [ ] 先頭をユーザー向けに: これは何か (1 段落) / スクリーンショット / インストール手順 / Sorsa API キーの取得手順 / 基本的な使い方
-- [ ] 開発者向け (ソースからのビルド・テスト・データ層仕様へのリンク) を後半に分離
-- [ ] 既知の制限を明記: 日本語 UI のみ / Windows のみ / API は従量課金 (目安コスト) / 取得機能には Python が必要
+- [x] 先頭をユーザー向けに再構成: 概要 + アイコン / インストール / API キー取得手順 / 主な機能の使い方 (スクリーンショットは 4-5 待ちで「準備中」と明記) (2026-07-28)
+- [x] 開発者向け (ビルド・テスト・配布物作成・リリース手順) を後半に分離 (2026-07-28)
+- [x] 既知の制限 (Windows 専用 / 日本語 UI / 従量課金 / 取得は Python 必要) とログ添付の案内を明記 (2026-07-28)
 
 現状の README は全編 Python CLI の開発者向けで、**GUI ビューアの存在にほぼ触れていない** (言及はテストコマンドの 1 行のみ)。公開する製品はビューアなので主客転倒している。
 

@@ -20,6 +20,22 @@
     <Description>X (Twitter) のユーザー単位アーカイブをローカルに保存・閲覧するビューア</Description>
   </PropertyGroup>
 
+  <!-- 公開ビルドに fetcher 一式とライセンス表記を同梱する (docs/release-plan.md §2-1, §4-1)。
+       exe と同じフォルダに main.py + sorsa_fetcher/ があれば起動時の自動検出が効く。
+       __pycache__ を拾わないよう *.py だけをコピーする -->
+  <Target Name="BundleFetcherAndNotices" AfterTargets="Publish">
+    <ItemGroup>
+      <RootFiles Include="$(MSBuildProjectDirectory)\..\..\main.py" />
+      <RootFiles Include="$(MSBuildProjectDirectory)\..\..\requirements.txt" />
+      <RootFiles Include="$(MSBuildProjectDirectory)\..\..\.env.example" />
+      <RootFiles Include="$(MSBuildProjectDirectory)\..\..\LICENSE" />
+      <RootFiles Include="$(MSBuildProjectDirectory)\..\..\THIRD-PARTY-NOTICES.md" />
+      <FetcherSources Include="$(MSBuildProjectDirectory)\..\..\sorsa_fetcher\**\*.py" />
+    </ItemGroup>
+    <Copy SourceFiles="@(RootFiles)" DestinationFolder="$(PublishDir)" />
+    <Copy SourceFiles="@(FetcherSources)" DestinationFolder="$(PublishDir)sorsa_fetcher\%(RecursiveDir)" />
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Emoji.Wpf" Version="0.3.4" />
