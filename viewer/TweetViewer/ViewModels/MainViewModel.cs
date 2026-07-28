@@ -30,10 +30,22 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>サイドバー表示用のタグフィルタ済みビュー。</summary>
     public ICollectionView UsersView { get; }
 
-    /// <summary>全タグ (フィルタ ComboBox / ContextMenu 用)。</summary>
+    /// <summary>
+    /// 実在するタグのみ (ContextMenu のタグ付け外し / タグの整理ダイアログ用)。
+    /// 疑似タグを混ぜてはいけない。追加・削除は RefreshTagsAsync 内で
+    /// TagFilterOptions と必ず対で行うこと。
+    /// </summary>
     public ObservableCollection<TagItemViewModel> Tags { get; } = new();
 
-    /// <summary>null = 全ユーザー表示。</summary>
+    /// <summary>
+    /// タグフィルタ ComboBox 用。先頭が疑似タグ「(タグなし)」で、以降は Tags と同じ並び。
+    /// SelectedTagFilter の参照同一性と ComboBox の選択を保つため Clear() は禁止
+    /// (Reset 通知で Selector が選択を捨てる)。Tags と対で差分更新する。
+    /// </summary>
+    public ObservableCollection<TagItemViewModel> TagFilterOptions { get; } =
+        new() { TagItemViewModel.CreateUntagged() };
+
+    /// <summary>null = 全件表示。IsUntagged = タグ未設定の項目のみ表示。</summary>
     [ObservableProperty]
     private TagItemViewModel? _selectedTagFilter;
 
@@ -71,13 +83,17 @@ public sealed partial class MainViewModel : ObservableObject
 
     private readonly IconCache _iconCache;
 
+    /// <summary>前回終了時のタグフィルタ (InitializeAsync で Tags 読込後に適用)。</summary>
+    private readonly long? _initialTagFilterId;
+
     public MainViewModel(
         ViewerDatabase db, UserRepository users, TweetRepository tweets, TagRepository tags,
         JsonlImporter importer, ReadMarkQueue readQueue, FetchProcessService fetchService,
-        IconCache iconCache, bool unreadOnly = false)
+        IconCache iconCache, bool unreadOnly = false, long? tagFilterId = null)
     {
         // プロパティ経由だと SelectedUser 確定前に ResetListAsync が走るためフィールドを直接初期化
         _unreadOnly = unreadOnly;
+        _initialTagFilterId = tagFilterId;
         _db = db;
         _users = users;
         _tags = tags;
@@ -102,6 +118,7 @@ public sealed partial class MainViewModel : ObservableObject
         await RefreshUsersAsync();
         await RefreshSearchesAsync();
         await RefreshTagsAsync();   // Users / Searches が埋まってからタグを反映
+        RestoreTagFilter();
 
         var targets = Users.Select(u => u.Username)
             .Concat(Searches.Select(s => s.Username))
@@ -119,8 +136,19 @@ public sealed partial class MainViewModel : ObservableObject
         await RefreshSearchesAsync();
         StatusText = "準備完了";
 
-        if (SelectedUser is null && SelectedSearch is null && !IsAllTimeline && Users.Count > 0)
-            SelectedUser = Users[0];
+        // タグフィルタ復元で Users[0] が非表示になりうるため、表示中の先頭を選ぶ
+        if (SelectedUser is null && SelectedSearch is null && !IsAllTimeline)
+            SelectedUser = UsersView.Cast<UserItemViewModel>().FirstOrDefault();
+    }
+
+    /// <summary>前回終了時のタグフィルタを復元する (タグが消えていれば「すべて表示」のまま)。</summary>
+    private void RestoreTagFilter()
+    {
+        if (_initialTagFilterId is not { } id)
+            return;
+        SelectedTagFilter = id == TagItemViewModel.UntaggedTagId
+            ? TagFilterOptions.FirstOrDefault(t => t.IsUntagged)
+            : Tags.FirstOrDefault(t => t.TagId == id);
     }
 
     public async Task RefreshUsersAsync()
@@ -158,11 +186,22 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    private bool FilterUser(object obj) =>
-        SelectedTagFilter is not { } tag || ((UserItemViewModel)obj).HasTag(tag.TagId);
+    private bool FilterUser(object obj) => MatchesTagFilter(((UserItemViewModel)obj).Tags);
 
-    private bool FilterSearch(object obj) =>
-        SelectedTagFilter is not { } tag || ((SearchItemViewModel)obj).HasTag(tag.TagId);
+    private bool FilterSearch(object obj) => MatchesTagFilter(((SearchItemViewModel)obj).Tags);
+
+    /// <summary>
+    /// タグフィルタ判定。未選択 = 全件、「(タグなし)」= タグ 0 件の行のみ、
+    /// それ以外 = そのタグが付いた行のみ。
+    /// </summary>
+    private bool MatchesTagFilter(IReadOnlyCollection<TagItemViewModel> tags)
+    {
+        if (SelectedTagFilter is not { } filter)
+            return true;
+        return filter.IsUntagged
+            ? tags.Count == 0
+            : tags.Any(t => t.TagId == filter.TagId);
+    }
 
     partial void OnSelectedTagFilterChanged(TagItemViewModel? value)
     {
@@ -194,14 +233,21 @@ public sealed partial class MainViewModel : ObservableObject
             if (byId.Remove(row.TagId, out var existing))
                 existing.Apply(row);
             else
-                Tags.Add(new TagItemViewModel(row));
+            {
+                var added = new TagItemViewModel(row);
+                Tags.Add(added);
+                TagFilterOptions.Add(added);   // 先頭の「(タグなし)」は動かさず末尾へ
+            }
         }
         // 消えたタグを除去 (SelectedTagFilter の参照同一性を保つため作り直さない)
         foreach (var removed in byId.Values)
         {
-            Tags.Remove(removed);
+            // ComboBox 側の自動 null 化より先に VM 主導で解除する
+            // (CollectionChanged の最中に OnSelectedTagFilterChanged が走るのを避ける)
             if (SelectedTagFilter == removed)
                 SelectedTagFilter = null;
+            Tags.Remove(removed);
+            TagFilterOptions.Remove(removed);
         }
 
         var assignments = await _tags.GetAssignmentsAsync();

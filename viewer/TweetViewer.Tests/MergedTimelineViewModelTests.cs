@@ -52,13 +52,13 @@ public sealed class MergedTimelineViewModelTests : IAsyncDisposable
         await new JsonlImporter(_db).ImportUserAsync(username);
     }
 
-    private MainViewModel CreateViewModel()
+    private MainViewModel CreateViewModel(long? tagFilterId = null)
     {
         var settings = new AppSettings { RepoDir = _dataDir, DataDir = _dataDir };
         return new MainViewModel(
             _db, new UserRepository(_db), new TweetRepository(_db), new TagRepository(_db),
             new JsonlImporter(_db), _readQueue, new FetchProcessService(settings),
-            new IconCache(_dataDir));
+            new IconCache(_dataDir), unreadOnly: false, tagFilterId);
     }
 
     private static async Task WaitForAsync(Func<bool> condition)
@@ -134,6 +134,93 @@ public sealed class MergedTimelineViewModelTests : IAsyncDisposable
 
         vm.SelectedTagFilter = null;
         await WaitForAsync(() => vm.TweetList.Items.Count == 2);
+    });
+
+    [Fact]
+    public void UntaggedFilterNarrowsToRowsWithoutTags() => RunOnDispatcher(async () =>
+    {
+        await ImportAsync("alice", TweetLine(1, Date(1)));
+        await ImportAsync("bob", TweetLine(2, Date(2)));
+
+        var vm = CreateViewModel();
+        var tags = new TagRepository(_db);
+        var tagId = await tags.AddAsync("A");
+        await tags.AssignAsync("alice", tagId);
+        await vm.RefreshUsersAsync();
+        await vm.RefreshTagsAsync();
+
+        // 疑似タグはフィルタ用の一覧の先頭だけに現れ、実タグ一覧には入らない
+        Assert.True(vm.TagFilterOptions[0].IsUntagged);
+        Assert.DoesNotContain(vm.Tags, t => t.IsUntagged);
+        Assert.Equal(vm.Tags.Count + 1, vm.TagFilterOptions.Count);
+
+        vm.IsAllTimeline = true;
+        await WaitForAsync(() => vm.TweetList.Items.Count == 2);
+
+        // 「(タグなし)」= タグ 0 件の bob だけが残る
+        vm.SelectedTagFilter = vm.TagFilterOptions.Single(t => t.IsUntagged);
+        await WaitForAsync(() => vm.TweetList.Items.Count == 1);
+        Assert.Equal("2", vm.TweetList.Items[0].TweetId);
+        Assert.Equal(new[] { "bob" },
+            vm.UsersView.Cast<UserItemViewModel>().Select(u => u.Username));
+        Assert.True(vm.IsAllTimeline);   // 統合状態は維持
+
+        // タグを付けると「(タグなし)」の対象から外れる
+        await vm.ToggleTagAsync(vm.Users.Single(u => u.Username == "bob"),
+            vm.Tags.Single(t => t.TagId == tagId), assign: true);
+        Assert.Empty(vm.UsersView.Cast<UserItemViewModel>());
+
+        vm.SelectedTagFilter = null;
+        await WaitForAsync(() => vm.TweetList.Items.Count == 2);
+    });
+
+    [Fact]
+    public void UntaggedOptionSurvivesTagAddAndDelete() => RunOnDispatcher(async () =>
+    {
+        await ImportAsync("alice", TweetLine(1, Date(1)));
+
+        var vm = CreateViewModel();
+        await vm.RefreshUsersAsync();
+        await vm.RefreshTagsAsync();
+        Assert.Single(vm.TagFilterOptions);   // 疑似タグのみ
+
+        await vm.CreateAndAssignTagAsync("A", "alice");
+        Assert.Equal(new[] { "(タグなし)", "A" }, vm.TagFilterOptions.Select(t => t.Name));
+
+        // 疑似タグを選んだまま実タグを消しても、先頭と選択は残る
+        vm.SelectedTagFilter = vm.TagFilterOptions[0];
+        await vm.DeleteTagAsync(vm.Tags.Single(t => t.Name == "A"));
+        Assert.Empty(vm.Tags);
+        Assert.Single(vm.TagFilterOptions);
+        Assert.True(vm.SelectedTagFilter?.IsUntagged);
+        Assert.Single(vm.UsersView.Cast<UserItemViewModel>());   // タグ 0 件に戻って再表示
+    });
+
+    [Fact]
+    public void RestoresTagFilterFromSettings() => RunOnDispatcher(async () =>
+    {
+        await ImportAsync("alice", TweetLine(1, Date(1)));
+        await ImportAsync("bob", TweetLine(2, Date(2)));
+        var tags = new TagRepository(_db);
+        var tagId = await tags.AddAsync("A");
+        await tags.AssignAsync("alice", tagId);
+
+        // -1 = 「(タグなし)」。表示中の先頭が選択ユーザーになる
+        var untagged = CreateViewModel(TagItemViewModel.UntaggedTagId);
+        await untagged.InitializeAsync();
+        Assert.True(untagged.SelectedTagFilter?.IsUntagged);
+        Assert.Equal(new[] { "bob" },
+            untagged.UsersView.Cast<UserItemViewModel>().Select(u => u.Username));
+        Assert.Equal("bob", untagged.SelectedUser?.Username);
+
+        var tagged = CreateViewModel(tagId);
+        await tagged.InitializeAsync();
+        Assert.Equal(tagId, tagged.SelectedTagFilter?.TagId);
+
+        // 消えたタグ ID は「すべて表示」に戻す
+        var stale = CreateViewModel(tagId + 999);
+        await stale.InitializeAsync();
+        Assert.Null(stale.SelectedTagFilter);
     });
 
     [Fact]

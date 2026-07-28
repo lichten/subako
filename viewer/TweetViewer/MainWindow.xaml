@@ -44,13 +44,14 @@
                         ToolTip="ユーザーを追加" Click="AddUser_Click" />
                 <TextBlock Text="ユーザー" FontWeight="Bold" VerticalAlignment="Center" />
             </DockPanel>
-            <!-- タグフィルタ (未選択 = 全ユーザー表示) -->
+            <!-- タグフィルタ (未選択 = 全件表示。先頭の「(タグなし)」は疑似タグ) -->
             <DockPanel DockPanel.Dock="Top" Margin="8,0,8,4">
                 <Button DockPanel.Dock="Right" Content="×" Width="22" Height="22" Margin="4,0,0,0"
                         ToolTip="タグフィルタを解除" Click="ClearTagFilter_Click" />
-                <ComboBox ItemsSource="{Binding Tags}"
+                <ComboBox ItemsSource="{Binding TagFilterOptions}"
                           SelectedItem="{Binding SelectedTagFilter}"
-                          DisplayMemberPath="Name" />
+                          DisplayMemberPath="Name"
+                          ToolTip="タグで絞り込みます。「(タグなし)」はタグが設定されていない項目だけを表示します" />
             </DockPanel>
             <!-- 上のタグフィルタで絞り込んだ結果に対して一括更新する -->
             <Button DockPanel.Dock="Top" Margin="8,0,8,6" Padding="4,2"

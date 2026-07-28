@@ -37,7 +37,7 @@ public partial class App : Application
         var iconCache = new IconCache(settings.EffectiveDataDir);
 
         var mainVm = new MainViewModel(db, users, tweets, tags, importer, _readQueue, fetchService, iconCache,
-            settings.UnreadOnly);
+            settings.UnreadOnly, settings.TagFilterId);
         var window = new MainWindow(settings) { DataContext = mainVm };
         MainWindow = window;
         window.Show();

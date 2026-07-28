@@ -28,6 +28,9 @@ public sealed class AppSettings
     /// <summary>前回終了時のサイドバー幅 (null = 未保存で既定 260)。</summary>
     public double? SidebarWidth { get; set; }
 
+    /// <summary>前回終了時のタグフィルタ。null = すべて表示、-1 = タグなし、それ以外 = tag_id。</summary>
+    public long? TagFilterId { get; set; }
+
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "TweetViewer", "settings.json");
