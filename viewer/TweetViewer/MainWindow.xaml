@@ -389,7 +389,7 @@
                                         </ItemsControl.ItemsPanel>
                                     </ItemsControl>
 
-                                    <!-- 動画リンクのサムネイル (YouTube / ニコニコ動画) -->
+                                    <!-- 動画サムネイル (X 添付動画 + YouTube / ニコニコ動画リンク) -->
                                     <ItemsControl ItemsSource="{Binding LinkThumbnails}" Margin="0,6,0,0"
                                                   Visibility="{Binding HasLinkThumbnails, Converter={StaticResource BoolToVis}}">
                                         <ItemsControl.ItemsPanel>

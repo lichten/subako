@@ -174,22 +174,29 @@ data/
   `_normal` → `_bigger` に置換した URL を優先し、404 なら元 URL でフォールバック
 - **派生データ**: 消しても再取得できる。全プラットフォームのビューアで共有可
 
-### 3.6 動画リンクのサムネイルキャッシュ (`data/thumbnails/`)
+### 3.6 動画サムネイルキャッシュ (`data/thumbnails/`)
 
-本文中の動画リンクのサムネイル。`data/icons/` と同じ実装 (`Services/IconCache.cs`、
+本文中の動画リンクと X 添付動画のサムネイル。`data/icons/` と同じ実装 (`Services/IconCache.cs`、
 コンストラクタの `subDirectory` 引数で保存先を分けている) で、ファイル名も
 `<sha1(サムネイルURL) の小文字hex>.<ext>` と同規則。**派生データ**なので消して構わない。
 
 `tweet_media` には載せない。§3 の連番 `idx` は Python と C# の共有契約であり、
-ビューア側だけで行を挿すと既存画像のファイル名解決が壊れるため。抽出は表示時に
-`Services/Linkifier.ExtractVideoLinks` が本文 (`DisplayText` / `QuotedText`) に対して行う。
+ビューア側だけで行を挿すと既存画像のファイル名解決が壊れるため。抽出は表示時に行う:
 
-サムネイル URL は **API キーもスクレイピングも使わず URL から組み立てる**:
+- 動画リンク (YouTube / ニコニコ): `Services/Linkifier.ExtractVideoLinks` が本文
+  (`DisplayText` / `QuotedText`) に対して行う
+- X 添付動画: `Data/RawVideoEntityReader` がページロード時に `tweets.raw_offset` /
+  `raw_length` で tweets.jsonl の該当行をシーク再読みし、
+  `TweetJsonParser.ExtractVideoEntities` で `entities` の `type: video / animated_gif` を拾う
+  (`JsonlImporter.QueryLatestProfile` と同じ生行再読み方式)。
+  行に `video.twimg.com` を含むときだけ JSON パースするので追加コストは動画ツイート分のみ。
+  引用/RT の入れ子は entities が常に空 (§3) のため対象外 = 入れ子にしかない動画は表示されない
 
-| 対象 | 本文中の URL 形式 | サムネイル URL |
+| 対象 | 検出元 | サムネイル URL |
 |---|---|---|
-| YouTube | `youtu.be/<11文字ID>` / `youtube.com/watch?v=<ID>` / `shorts/` / `live/` / `embed/` (`www.` `m.` 付きも) | `https://i.ytimg.com/vi/<ID>/hqdefault.jpg` (URL から決定できる) |
-| ニコニコ動画 | `nicovideo.jp/watch/<sm\|nm\|so><数字>` / `nico.ms/<sm\|nm\|so><数字>` | **API 解決が必要** (下記) |
+| YouTube | 本文 URL: `youtu.be/<11文字ID>` / `youtube.com/watch?v=<ID>` / `shorts/` / `live/` / `embed/` (`www.` `m.` 付きも) | `https://i.ytimg.com/vi/<ID>/hqdefault.jpg` (URL から決定できる) |
+| ニコニコ動画 | 本文 URL: `nicovideo.jp/watch/<sm\|nm\|so><数字>` / `nico.ms/<sm\|nm\|so><数字>` | **API 解決が必要** (下記) |
+| X 添付動画 | `entities` の `type: video / animated_gif` (root のみ) | entity の `preview` (pbs.twimg.com) をそのまま使用。クリック先は `link` (video.twimg.com の mp4、ブラウザが直接再生) |
 
 - YouTube の `hqdefault` は常に存在する解像度。存在しない動画 ID は **404** が返るので
   失敗として扱える (灰色の代替画像は返らない)

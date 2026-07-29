@@ -20,6 +20,8 @@ public sealed partial class TweetListViewModel : ObservableObject
     private readonly IconCache _iconCache;
     /// <summary>動画リンクのサムネイル用 (data/thumbnails/。アイコンとは別ディレクトリ)。</summary>
     private readonly IconCache _thumbnailCache;
+    /// <summary>X 添付動画の表示時抽出 (tweet_media に載せないため JSONL を再読みする)。</summary>
+    private readonly RawVideoEntityReader _videoReader;
 
     private IReadOnlyList<string> _usernames = [];
     /// <summary>行の Username → 表示情報。統合表示では行ごとに引く (ページ共通のスカラーだと誤表示になる)。</summary>
@@ -49,6 +51,7 @@ public sealed partial class TweetListViewModel : ObservableObject
         _readQueue = readQueue;
         _iconCache = iconCache;
         _thumbnailCache = new IconCache(db.DataDir, "thumbnails");
+        _videoReader = new RawVideoEntityReader(db);
     }
 
     /// <summary>表示対象を差し替える。archives が複数なら統合タイムライン (時系列にマージ)。</summary>
@@ -88,20 +91,25 @@ public sealed partial class TweetListViewModel : ObservableObject
                 return;   // リセットで破棄
 
             var archiveInfo = _archiveInfo;
-            var vms = await Task.Run(() => page.Rows
-                .Select(row =>
-                {
-                    // 行のアーカイブに応じた表示情報 (統合表示ではページ内に複数アーカイブが混ざる)
-                    var (imagesDir, displayName, iconUrl) =
-                        archiveInfo.TryGetValue(row.Username, out var info)
-                            ? info
-                            : (_db.ImagesDir(row.Username), row.Username, null);
-                    return new TweetItemViewModel(
-                        this, row,
-                        page.Media.TryGetValue(row.TweetId, out var m) ? m : Array.Empty<TweetMediaRow>(),
-                        imagesDir, displayName, iconUrl, _iconCache, _thumbnailCache);
-                })
-                .ToList());
+            var vms = await Task.Run(() =>
+            {
+                var videos = _videoReader.ReadForPage(page.Rows);
+                return page.Rows
+                    .Select(row =>
+                    {
+                        // 行のアーカイブに応じた表示情報 (統合表示ではページ内に複数アーカイブが混ざる)
+                        var (imagesDir, displayName, iconUrl) =
+                            archiveInfo.TryGetValue(row.Username, out var info)
+                                ? info
+                                : (_db.ImagesDir(row.Username), row.Username, null);
+                        return new TweetItemViewModel(
+                            this, row,
+                            page.Media.TryGetValue(row.TweetId, out var m) ? m : Array.Empty<TweetMediaRow>(),
+                            videos.TryGetValue(row.TweetId, out var v) ? v : [],
+                            imagesDir, displayName, iconUrl, _iconCache, _thumbnailCache);
+                    })
+                    .ToList();
+            });
             if (version != _resetVersion)
                 return;
 

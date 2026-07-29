@@ -321,4 +321,82 @@ public class TweetJsonParserTests
         Assert.Null(TweetJsonParser.Parse("[1,2,3]", "u", 0, 7));
         Assert.Null(TweetJsonParser.Parse("""{"full_text":"no id"}""", "u", 0, 21));
     }
+
+    // 以下: X 添付動画 (video エンティティ) の抽出。tweet_media (idx は Python と共有) には
+    // 載せず ExtractVideoEntities で表示時にのみ拾う。
+
+    private static IReadOnlyList<VideoEntity> ExtractVideos(string json)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return TweetJsonParser.ExtractVideoEntities(doc.RootElement);
+    }
+
+    [Fact]
+    public void VideoEntities_ExtractedFromEntitiesList_SorsaFormat()
+    {
+        var videos = ExtractVideos("""
+            {"id":"200","full_text":"v",
+             "entities":[{"type":"video","link":"https://video.twimg.com/ext_tw_video/1/pu/vid/480x270/a.mp4?tag=12",
+                          "preview":"https://pbs.twimg.com/ext_tw_video_thumb/1/pu/img/b.jpg"},
+                         {"type":"photo","link":"https://pbs.twimg.com/media/ABC.jpg"}]}
+            """.ReplaceLineEndings(""));
+        var video = Assert.Single(videos);
+        Assert.Equal("https://video.twimg.com/ext_tw_video/1/pu/vid/480x270/a.mp4?tag=12", video.PageUrl);
+        Assert.Equal("https://pbs.twimg.com/ext_tw_video_thumb/1/pu/img/b.jpg", video.ThumbnailUrl);
+    }
+
+    [Fact]
+    public void VideoEntities_AnimatedGifIncluded()
+    {
+        var videos = ExtractVideos("""
+            {"id":"201","entities":[{"type":"animated_gif",
+              "link":"https://video.twimg.com/tweet_video/x.mp4",
+              "preview":"https://pbs.twimg.com/tweet_video_thumb/x.jpg"}]}
+            """.ReplaceLineEndings(""));
+        Assert.Single(videos);
+    }
+
+    [Fact]
+    public void VideoEntities_MissingPreviewOrLinkSkipped_AndDeduped()
+    {
+        var videos = ExtractVideos("""
+            {"id":"202","entities":[
+              {"type":"video","link":"https://video.twimg.com/a.mp4"},
+              {"type":"video","preview":"https://pbs.twimg.com/b.jpg"},
+              {"type":"video","link":"https://video.twimg.com/c.mp4","preview":"https://pbs.twimg.com/c.jpg"},
+              {"type":"video","link":"https://video.twimg.com/c.mp4","preview":"https://pbs.twimg.com/c2.jpg"}]}
+            """.ReplaceLineEndings(""));
+        var video = Assert.Single(videos);
+        Assert.Equal("https://video.twimg.com/c.mp4", video.PageUrl);
+        Assert.Equal("https://pbs.twimg.com/c.jpg", video.ThumbnailUrl);
+    }
+
+    [Fact]
+    public void VideoEntities_NestedTweetsNotScanned()
+    {
+        // 入れ子は entities が常に空という前提だが、仮に入っていても root のみ対象
+        var videos = ExtractVideos("""
+            {"id":"203","entities":[],
+             "quoted_status":{"id":"204","entities":[{"type":"video",
+               "link":"https://video.twimg.com/q.mp4","preview":"https://pbs.twimg.com/q.jpg"}]}}
+            """.ReplaceLineEndings(""));
+        Assert.Empty(videos);
+    }
+
+    [Fact]
+    public void VideoEntities_DoNotConsumePhotoIndex()
+    {
+        // 回帰ガード: photo の idx は Python (media.extract_photo_urls) と共有の契約。
+        // video が混ざっても photo の idx が従来通り 1,2 で採番されること
+        var parsed = ParseOk("""
+            {"id":"205","full_text":"mix",
+             "entities":[{"type":"photo","link":"https://pbs.twimg.com/media/P1.jpg"},
+                         {"type":"video","link":"https://video.twimg.com/v.mp4","preview":"https://pbs.twimg.com/v.jpg"},
+                         {"type":"photo","link":"https://pbs.twimg.com/media/P2.jpg"}]}
+            """.ReplaceLineEndings(""));
+        Assert.Equal(2, parsed.Media.Count);
+        Assert.Equal(new TweetMediaRow("205", 1, "https://pbs.twimg.com/media/P1.jpg", "jpg", MediaOrigin.Own), parsed.Media[0]);
+        Assert.Equal(new TweetMediaRow("205", 2, "https://pbs.twimg.com/media/P2.jpg", "jpg", MediaOrigin.Own), parsed.Media[1]);
+        Assert.Equal(2, parsed.Row.MediaCount);
+    }
 }

@@ -46,7 +46,7 @@ public sealed class QuotedImageTests : IAsyncDisposable
         var list = new TweetListViewModel(
             _db, new TweetRepository(_db), _readQueue, new IconCache(_dataDir));
         // imagesDir にテンポラリ dir をそのまま使う (PlaceImage の配置先と一致させる)
-        return new TweetItemViewModel(list, row, media, _dataDir, "owner", null,
+        return new TweetItemViewModel(list, row, media, [], _dataDir, "owner", null,
             new IconCache(_dataDir), new IconCache(_dataDir, "thumbnails"));
     }
 

@@ -7,6 +7,9 @@ namespace TweetViewer.Data;
 
 public sealed record ParsedTweet(TweetRow Row, IReadOnlyList<TweetMediaRow> Media, string? AuthorIconUrl);
 
+/// <summary>X 添付動画。PageUrl = video.twimg.com の mp4、ThumbnailUrl = preview (pbs.twimg.com)。</summary>
+public sealed record VideoEntity(string PageUrl, string ThumbnailUrl);
+
 /// <summary>
 /// tweets.jsonl の1行を TweetRow + tweet_media 行に変換する純関数。
 /// ID 抽出順・日時形式・画像抽出順は Python 側 (storage.tweet_id_of /
@@ -26,6 +29,7 @@ public static partial class TweetJsonParser
     };
 
     private static readonly string[] PhotoTypes = { "photo", "image" };
+    private static readonly string[] VideoTypes = { "video", "animated_gif" };
     private static readonly string[] UrlKeys =
         { "preview", "media_url_https", "media_url", "url", "link", "expanded_url" };
     private static readonly string[] NestedKeys =
@@ -200,23 +204,24 @@ public static partial class TweetJsonParser
                     @"(?:\.(?:jpg|jpeg|png|webp|gif))?(?:\?[A-Za-z0-9_=&%.\-]*)?")]
     private static partial Regex TextMediaRegex();
 
-    private static IEnumerable<JsonElement> IterMediaEntries(JsonElement tweet)
+    private static IEnumerable<JsonElement> IterMediaEntries(JsonElement tweet) =>
+        IterEntityEntries(tweet).Where(IsPhotoEntry);
+
+    private static IEnumerable<JsonElement> IterEntityEntries(JsonElement tweet)
     {
         if (tweet.TryGetProperty("entities", out var entities))
         {
             if (entities.ValueKind == JsonValueKind.Array)
             {
                 foreach (var entry in entities.EnumerateArray())
-                    if (IsPhotoEntry(entry))
-                        yield return entry;
+                    yield return entry;
             }
             else if (entities.ValueKind == JsonValueKind.Object &&
                      entities.TryGetProperty("media", out var media) &&
                      media.ValueKind == JsonValueKind.Array)
             {
                 foreach (var entry in media.EnumerateArray())
-                    if (IsPhotoEntry(entry))
-                        yield return entry;
+                    yield return entry;
             }
         }
         foreach (var key in new[] { "extended_entities", "extendedEntities" })
@@ -227,17 +232,46 @@ public static partial class TweetJsonParser
                 media.ValueKind == JsonValueKind.Array)
             {
                 foreach (var entry in media.EnumerateArray())
-                    if (IsPhotoEntry(entry))
-                        yield return entry;
+                    yield return entry;
             }
         }
     }
 
     private static bool IsPhotoEntry(JsonElement entry) =>
+        IsEntryOfType(entry, PhotoTypes);
+
+    private static bool IsVideoEntry(JsonElement entry) =>
+        IsEntryOfType(entry, VideoTypes);
+
+    private static bool IsEntryOfType(JsonElement entry, string[] types) =>
         entry.ValueKind == JsonValueKind.Object &&
         entry.TryGetProperty("type", out var t) &&
         t.ValueKind == JsonValueKind.String &&
-        PhotoTypes.Contains(t.GetString());
+        types.Contains(t.GetString());
+
+    /// <summary>
+    /// X 添付動画 (type: video / animated_gif) の抽出。tweet_media (idx は Python と
+    /// 共有の契約) には載せず、表示時にのみ使う。preview の無い要素はサムネイルを
+    /// 出せないためスキップ。入れ子 (quoted_status 等) は entities が常に空なので
+    /// root のみ走査する。
+    /// </summary>
+    public static IReadOnlyList<VideoEntity> ExtractVideoEntities(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return [];
+        var result = new List<VideoEntity>();
+        var seen = new HashSet<string>();
+        foreach (var entry in IterEntityEntries(root).Where(IsVideoEntry))
+        {
+            var pageUrl = GetString(entry, "link");
+            var thumbnailUrl = GetString(entry, "preview");
+            if (string.IsNullOrEmpty(pageUrl) || string.IsNullOrEmpty(thumbnailUrl))
+                continue;
+            if (seen.Add(pageUrl))
+                result.Add(new VideoEntity(pageUrl, thumbnailUrl));
+        }
+        return result;
+    }
 
     private static string? PickImageUrl(JsonElement entry)
     {

@@ -50,12 +50,13 @@ public sealed class LinkThumbnailTests : IAsyncDisposable
     private void PlaceCached(string thumbnailUrl) =>
         File.WriteAllBytes(_thumbnailCache.CachePathFor(thumbnailUrl), [0]);
 
-    private TweetItemViewModel CreateItem(TweetRow row)
+    private TweetItemViewModel CreateItem(TweetRow row, IReadOnlyList<VideoEntity>? videoEntities = null)
     {
         var list = new TweetListViewModel(
             _db, new TweetRepository(_db), _readQueue, new IconCache(_dataDir));
         return new TweetItemViewModel(
-            list, row, [], _dataDir, "owner", null, new IconCache(_dataDir), _thumbnailCache);
+            list, row, [], videoEntities ?? [], _dataDir, "owner", null,
+            new IconCache(_dataDir), _thumbnailCache);
     }
 
     private static TweetRow Row(
@@ -130,6 +131,48 @@ public sealed class LinkThumbnailTests : IAsyncDisposable
         var vm = CreateItem(Row("5", "https://example.com/article だけ"));
         Assert.Empty(vm.LinkThumbnails);
         Assert.False(vm.HasLinkThumbnails);
+    }
+
+    private const string XVideoUrl =
+        "https://video.twimg.com/ext_tw_video/100/pu/vid/480x270/abc.mp4?tag=12";
+    private const string XVideoThumb =
+        "https://pbs.twimg.com/ext_tw_video_thumb/100/pu/img/def.jpg";
+
+    [Fact]
+    public async Task VideoEntityGetsThumbnail()
+    {
+        PlaceCached(XVideoThumb);
+        var vm = CreateItem(Row("6", $"動画です {XVideoUrl}"),
+            [new VideoEntity(XVideoUrl, XVideoThumb)]);
+
+        var item = Assert.Single(vm.LinkThumbnails);
+        Assert.Equal(XVideoUrl, item.PageUrl);
+        Assert.True(vm.HasLinkThumbnails);
+        await WaitForAsync(() => item.HasImage);
+        Assert.EndsWith(".jpg", item.ThumbnailPath);
+    }
+
+    [Fact]
+    public void VideoEntityComesBeforeBodyLinkThumbnails()
+    {
+        PlaceCached(XVideoThumb);
+        PlaceCached(YtThumb);
+        var vm = CreateItem(Row("7", $"動画 {XVideoUrl} と {YtUrl}"),
+            [new VideoEntity(XVideoUrl, XVideoThumb)]);
+
+        Assert.Equal(2, vm.LinkThumbnails.Count);
+        Assert.Equal(XVideoUrl, vm.LinkThumbnails[0].PageUrl);
+        Assert.Equal(YtUrl, vm.LinkThumbnails[1].PageUrl);
+    }
+
+    [Fact]
+    public void DuplicateVideoEntities_ShownOnce()
+    {
+        PlaceCached(XVideoThumb);
+        var vm = CreateItem(Row("8", "同じ動画を二重に持つ"),
+            [new VideoEntity(XVideoUrl, XVideoThumb), new VideoEntity(XVideoUrl, XVideoThumb)]);
+
+        Assert.Single(vm.LinkThumbnails);
     }
 
     [Fact]

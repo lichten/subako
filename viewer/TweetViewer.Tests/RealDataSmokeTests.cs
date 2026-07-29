@@ -47,4 +47,45 @@ public class RealDataSmokeTests
             Assert.Equal(0, again.NewTweets);
         }
     }
+
+    [Fact]
+    public async Task VideoEntities_FoundInRealArchives()
+    {
+        if (RealDataDir is not { } dataDir)
+            return;
+
+        var db = new ViewerDatabase(dataDir);
+        db.EnsureCreated();
+        var users = new UserRepository(db);
+        await users.RegisterExistingDataDirsAsync();
+        var importer = new JsonlImporter(db);
+
+        var repo = new TweetRepository(db);
+        var reader = new RawVideoEntityReader(db);
+        var found = 0;
+        foreach (var user in await users.GetAllAsync())
+        {
+            await importer.ImportUserAsync(user.Username);
+            (long, long)? cursor = null;
+            while (true)
+            {
+                var page = await repo.GetPageAsync([user.Username], false, cursor, 500);
+                if (page.Rows.Count == 0)
+                    break;
+                foreach (var (_, videos) in reader.ReadForPage(page.Rows))
+                {
+                    found += videos.Count;
+                    foreach (var video in videos)
+                    {
+                        Assert.Contains("video.twimg.com", video.PageUrl);
+                        Assert.Contains("twimg.com", video.ThumbnailUrl);
+                    }
+                }
+                var last = page.Rows[^1];
+                cursor = (last.SortKey, last.IdInt);
+            }
+        }
+        // 手元の 4 アーカイブには video エンティティ持ちが 203 件ある。1 件も拾えなければ退行
+        Assert.True(found > 0, "実データから video エンティティが 1 件も抽出できませんでした");
+    }
 }

@@ -56,7 +56,7 @@ public sealed class CountsTextTests : IAsyncDisposable
         };
         var list = new TweetListViewModel(
             _db, new TweetRepository(_db), _readQueue, new IconCache(_dataDir));
-        var vm = new TweetItemViewModel(list, row, [], _dataDir, "owner", null,
+        var vm = new TweetItemViewModel(list, row, [], [], _dataDir, "owner", null,
             new IconCache(_dataDir), new IconCache(_dataDir, "thumbnails"));
         return vm.CountsText;
     }

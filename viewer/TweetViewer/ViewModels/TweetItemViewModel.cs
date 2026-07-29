@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using TweetViewer.Data;
 using TweetViewer.Models;
 using TweetViewer.Services;
 
@@ -41,6 +42,7 @@ public sealed partial class TweetItemViewModel : ObservableObject
 
     public TweetItemViewModel(
         TweetListViewModel owner, TweetRow row, IReadOnlyList<TweetMediaRow> media,
+        IReadOnlyList<VideoEntity> videoEntities,
         string imagesDir, string ownerDisplayName, string? ownerIconUrl, IconCache iconCache,
         IconCache thumbnailCache)
     {
@@ -56,10 +58,28 @@ public sealed partial class TweetItemViewModel : ObservableObject
         if (IsQuote)
             ResolveIcon(iconCache, Row.QuotedIconUrl, path => QuotedIconPath = path);
 
-        // 同じ動画を本文と引用先の両方で参照していたら本文側だけに出す (画像の先勝ちと同じ規則)
+        // 同じ動画を本文と引用先の両方で参照していたら本文側だけに出す (画像の先勝ちと同じ規則)。
+        // X 添付動画 (エンティティ由来) は添付メディアの性格なので本文リンク由来より前に置く
         var seenThumbnails = new HashSet<string>();
-        LinkThumbnails = CreateThumbnails(DisplayText, thumbnailCache, seenThumbnails);
+        var thumbnails = CreateVideoEntityThumbnails(videoEntities, thumbnailCache, seenThumbnails);
+        thumbnails.AddRange(CreateThumbnails(DisplayText, thumbnailCache, seenThumbnails));
+        LinkThumbnails = thumbnails;
         QuotedLinkThumbnails = CreateThumbnails(QuotedText, thumbnailCache, seenThumbnails);
+    }
+
+    private static List<LinkThumbnailViewModel> CreateVideoEntityThumbnails(
+        IReadOnlyList<VideoEntity> entities, IconCache cache, HashSet<string> seen)
+    {
+        var result = new List<LinkThumbnailViewModel>();
+        foreach (var entity in entities)
+        {
+            if (!seen.Add(entity.ThumbnailUrl))
+                continue;
+            var vm = new LinkThumbnailViewModel(entity.PageUrl);
+            ResolveIcon(cache, entity.ThumbnailUrl, path => vm.ThumbnailPath = path);
+            result.Add(vm);
+        }
+        return result;
     }
 
     private static List<LinkThumbnailViewModel> CreateThumbnails(
