@@ -3,6 +3,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TweetViewer.Data;
+using TweetViewer.Models;
 using TweetViewer.Services;
 
 namespace TweetViewer.ViewModels;
@@ -37,6 +38,7 @@ public sealed partial class MediaGridViewModel : ObservableObject
     private readonly TweetRepository _repo;
 
     private IReadOnlyList<string> _usernames = [];
+    private DateRangeFilter? _dateRange;
     private (long SortKey, long IdInt, int Idx)? _cursor;
     private bool _loading;
     private int _resetVersion;
@@ -49,6 +51,10 @@ public sealed partial class MediaGridViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasMore;
 
+    /// <summary>期間フィルタで 0 件になったときの案内表示 (ロード完了後にのみ立てる)。</summary>
+    [ObservableProperty]
+    private bool _showEmptyNotice;
+
     public MediaGridViewModel(ViewerDatabase db, TweetRepository repo)
     {
         _db = db;
@@ -56,11 +62,13 @@ public sealed partial class MediaGridViewModel : ObservableObject
     }
 
     /// <summary>表示対象を差し替える。usernames が複数なら統合表示 (時系列にマージ)。</summary>
-    public async Task ResetAsync(IReadOnlyList<string> usernames)
+    public async Task ResetAsync(IReadOnlyList<string> usernames, DateRangeFilter? dateRange)
     {
         var version = ++_resetVersion;
         _usernames = usernames;
+        _dateRange = dateRange;
         _cursor = null;
+        ShowEmptyNotice = false;
         Rows.Clear();
         FlatItems.Clear();
         HasMore = usernames.Count > 0;
@@ -79,7 +87,7 @@ public sealed partial class MediaGridViewModel : ObservableObject
         _loading = true;
         try
         {
-            var page = await _repo.GetMediaPageAsync(usernames, _cursor, PageSize);
+            var page = await _repo.GetMediaPageAsync(usernames, _cursor, PageSize, _dateRange);
             if (version != _resetVersion)
                 return;
 
@@ -122,6 +130,7 @@ public sealed partial class MediaGridViewModel : ObservableObject
                 _cursor = (last.SortKey, last.IdInt, last.Idx);
             }
             HasMore = page.Count == PageSize;
+            ShowEmptyNotice = _dateRange is not null && FlatItems.Count == 0;
         }
         finally
         {

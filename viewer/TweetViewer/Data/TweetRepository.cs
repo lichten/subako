@@ -35,7 +35,7 @@ public sealed class TweetRepository
     /// </summary>
     public Task<TweetPage> GetPageAsync(
         IReadOnlyList<string> usernames, bool unreadOnly, (long SortKey, long IdInt)? after, int limit,
-        CancellationToken ct = default)
+        DateRangeFilter? range = null, CancellationToken ct = default)
     {
         if (usernames.Count == 0)
         {
@@ -61,6 +61,7 @@ public sealed class TweetRepository
                 """;
             const string filters = """
                   AND ($unreadOnly = 0 OR r.tweet_id IS NULL)
+                  AND ($noRange = 1 OR (t.sort_key >= $from AND t.sort_key < $to))
                   AND ($noCursor = 1 OR t.sort_key < $sk
                        OR (t.sort_key = $sk AND t.id_int < $idi))
                 """;
@@ -93,6 +94,9 @@ public sealed class TweetRepository
                   LIMIT $limit
                   """;
             cmd.Parameters.AddWithValue("$unreadOnly", unreadOnly ? 1 : 0);
+            cmd.Parameters.AddWithValue("$noRange", range is null ? 1 : 0);
+            cmd.Parameters.AddWithValue("$from", range?.FromEpoch ?? 0);
+            cmd.Parameters.AddWithValue("$to", range?.ToEpochExclusive ?? 0);
             cmd.Parameters.AddWithValue("$noCursor", after is null ? 1 : 0);
             cmd.Parameters.AddWithValue("$sk", after?.SortKey ?? 0);
             cmd.Parameters.AddWithValue("$idi", after?.IdInt ?? 0);
@@ -230,7 +234,7 @@ public sealed class TweetRepository
     /// </summary>
     public Task<List<MediaPageRow>> GetMediaPageAsync(
         IReadOnlyList<string> usernames, (long SortKey, long IdInt, int Idx)? after, int limit,
-        CancellationToken ct = default)
+        DateRangeFilter? range = null, CancellationToken ct = default)
     {
         if (usernames.Count == 0)
             return Task.FromResult(new List<MediaPageRow>());
@@ -242,6 +246,7 @@ public sealed class TweetRepository
             const string filters = """
                   AND m.origin = 0
                   AND t.tweet_type != 1
+                  AND ($noRange = 1 OR (t.sort_key >= $from AND t.sort_key < $to))
                   AND ($noCursor = 1
                        OR t.sort_key < $sk
                        OR (t.sort_key = $sk AND t.id_int < $ii)
@@ -275,6 +280,9 @@ public sealed class TweetRepository
                   ORDER BY sort_key DESC, id_int DESC, idx ASC
                   LIMIT $limit
                   """;
+            cmd.Parameters.AddWithValue("$noRange", range is null ? 1 : 0);
+            cmd.Parameters.AddWithValue("$from", range?.FromEpoch ?? 0);
+            cmd.Parameters.AddWithValue("$to", range?.ToEpochExclusive ?? 0);
             cmd.Parameters.AddWithValue("$noCursor", after is null ? 1 : 0);
             cmd.Parameters.AddWithValue("$sk", after?.SortKey ?? 0);
             cmd.Parameters.AddWithValue("$ii", after?.IdInt ?? 0);
@@ -297,6 +305,26 @@ public sealed class TweetRepository
                     Username: reader.GetString(7)));
             }
             return rows;
+        }, ct);
+    }
+
+    /// <summary>表示対象全体の sort_key の最小/最大 (期間フィルタの年リスト用)。行が無ければ null。</summary>
+    public Task<(long Min, long Max)?> GetDateBoundsAsync(
+        IReadOnlyList<string> usernames, CancellationToken ct = default)
+    {
+        if (usernames.Count == 0)
+            return Task.FromResult<(long, long)?>(null);
+        return Task.Run<(long, long)?>(() =>
+        {
+            using var conn = _db.OpenConnection();
+            using var cmd = conn.CreateCommand();
+            var inList = BindInList(cmd, "$u", usernames);
+            cmd.CommandText =
+                $"SELECT MIN(sort_key), MAX(sort_key) FROM tweets WHERE username IN ({inList})";
+            using var reader = cmd.ExecuteReader();
+            if (!reader.Read() || reader.IsDBNull(0))
+                return null;
+            return (reader.GetInt64(0), reader.GetInt64(1));
         }, ct);
     }
 

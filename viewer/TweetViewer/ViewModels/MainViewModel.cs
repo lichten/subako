@@ -5,6 +5,7 @@ using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TweetViewer.Data;
+using TweetViewer.Models;
 using TweetViewer.Services;
 
 namespace TweetViewer.ViewModels;
@@ -12,10 +13,21 @@ namespace TweetViewer.ViewModels;
 /// <summary>フォロー一括登録の結果 (対象件数 / 新規登録数 / 付与したタグ数)。</summary>
 public sealed record FollowingsImportResult(int Total, int Added, int TagCount);
 
+/// <summary>
+/// 期間フィルタ ComboBox の 1 項目。Value == null が「(すべて)」。
+/// int? を直接 ItemsSource にしないのは、Selector が SelectedItem == null を
+/// 「未選択」と解釈するため null 値を明示行として出せないから。
+/// </summary>
+public sealed record DateOptionItem(int? Value, string Label)
+{
+    public static readonly DateOptionItem All = new(null, "(すべて)");
+}
+
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly ViewerDatabase _db;
     private readonly UserRepository _users;
+    private readonly TweetRepository _tweets;
     private readonly TagRepository _tags;
     private readonly JsonlImporter _importer;
 
@@ -76,6 +88,42 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _unreadOnly;
 
+    /// <summary>
+    /// 期間フィルタの年 ComboBox 用。先頭は「(すべて)」固定。
+    /// TagFilterOptions と同じ理由で Clear() 禁止 (Reset 通知で Selector が選択を捨てる)。
+    /// 表示対象の実データ範囲 (UpdateYearOptionsAsync) に合わせて差分更新する。
+    /// </summary>
+    public ObservableCollection<DateOptionItem> YearOptions { get; } = new() { DateOptionItem.All };
+
+    /// <summary>期間フィルタの月 ComboBox 用 (固定リスト)。</summary>
+    public IReadOnlyList<DateOptionItem> MonthOptions { get; } =
+        [DateOptionItem.All, .. Enumerable.Range(1, 12).Select(m => new DateOptionItem(m, $"{m}月"))];
+
+    /// <summary>期間フィルタの日 ComboBox 用。年月の確定時に日数分を再構築する。</summary>
+    public ObservableCollection<DateOptionItem> DayOptions { get; } = new() { DateOptionItem.All };
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(PrevPeriodCommand))]
+    [NotifyCanExecuteChangedFor(nameof(NextPeriodCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ClearDateFilterCommand))]
+    [NotifyPropertyChangedFor(nameof(IsMonthEnabled))]
+    [NotifyPropertyChangedFor(nameof(IsDayEnabled))]
+    private DateOptionItem? _selectedYearOption = DateOptionItem.All;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(PrevPeriodCommand))]
+    [NotifyCanExecuteChangedFor(nameof(NextPeriodCommand))]
+    [NotifyPropertyChangedFor(nameof(IsDayEnabled))]
+    private DateOptionItem? _selectedMonthOption = DateOptionItem.All;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(PrevPeriodCommand))]
+    [NotifyCanExecuteChangedFor(nameof(NextPeriodCommand))]
+    private DateOptionItem? _selectedDayOption = DateOptionItem.All;
+
+    public bool IsMonthEnabled => SelectedYearOption?.Value is not null;
+    public bool IsDayEnabled => IsMonthEnabled && SelectedMonthOption?.Value is not null;
+
     [ObservableProperty]
     private string _statusText = "";
 
@@ -99,6 +147,7 @@ public sealed partial class MainViewModel : ObservableObject
         _initialTagFilterId = tagFilterId;
         _db = db;
         _users = users;
+        _tweets = tweets;
         _tags = tags;
         _importer = importer;
         _iconCache = iconCache;
@@ -138,6 +187,7 @@ public sealed partial class MainViewModel : ObservableObject
         await RefreshUsersAsync();
         await RefreshSearchesAsync();
         StatusText = "準備完了";
+        _boundsCacheKey = null;   // 起動時取込の分を年リストへ反映
 
         // タグフィルタ復元で Users[0] が非表示になりうるため、表示中の先頭を選ぶ
         if (SelectedUser is null && SelectedSearch is null && !IsAllTimeline)
@@ -376,28 +426,192 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnIsMediaViewChanged(bool value) => _ = ResetListAsync();
 
-    private Task ResetListAsync()
+    /// <summary>ResetListAsync の並走ガード (年リスト取得の await 中に次のリセットが始まりうる)。</summary>
+    private int _resetListVersion;
+
+    private async Task ResetListAsync()
     {
-        if (IsAllTimeline)
+        var version = ++_resetListVersion;
+        // 表示中 (タグフィルタ適用後) のスナップショット。列挙中の Refresh は例外になる
+        List<ArchiveInfo> archives =
+            IsAllTimeline ? VisibleArchives()
+            : SelectedSearch is { } search ? [new ArchiveInfo(search.Username, search.Label, null)]
+            : SelectedUser is { } user ? [new ArchiveInfo(user.Username, user.DisplayName, user.IconUrl)]
+            : [];
+        var usernames = archives.Select(a => a.Username).ToList();
+
+        await UpdateYearOptionsAsync(usernames);
+        if (version != _resetListVersion)
+            return;   // より新しいリセットが開始済み (古い range で上書きしない)
+
+        var range = BuildDateRange();
+        await (IsMediaView
+            ? MediaGrid.ResetAsync(usernames, range)
+            : TweetList.ResetAsync(archives, UnreadOnly, range));
+    }
+
+    /// <summary>年→月→日の連鎖クリアで ResetListAsync を多重発火させないためのフラグ。</summary>
+    private bool _updatingDateFilter;
+
+    /// <summary>年リスト取得済みの表示対象の署名。null = 次のリセットで再取得。</summary>
+    private string? _boundsCacheKey;
+
+    partial void OnSelectedYearOptionChanged(DateOptionItem? value)
+    {
+        if (_updatingDateFilter)
+            return;
+        SetDateSelection(value?.Value, null, null);   // 年が変われば月・日はクリア
+    }
+
+    partial void OnSelectedMonthOptionChanged(DateOptionItem? value)
+    {
+        if (_updatingDateFilter)
+            return;
+        SetDateSelection(SelectedYearOption?.Value, value?.Value, null);   // 月が変われば日はクリア
+    }
+
+    partial void OnSelectedDayOptionChanged(DateOptionItem? value)
+    {
+        if (_updatingDateFilter)
+            return;
+        _ = ResetListAsync();
+    }
+
+    /// <summary>期間選択を一括で書き換えて 1 回だけリセットする (ユーザー操作は全部ここに合流)。</summary>
+    private void SetDateSelection(int? year, int? month, int? day)
+    {
+        _updatingDateFilter = true;
+        SelectedYearOption = FindOption(YearOptions, year);
+        SelectedMonthOption = FindOption(MonthOptions, month);
+        RebuildDayOptions(SelectedYearOption?.Value, SelectedMonthOption?.Value);
+        SelectedDayOption = FindOption(DayOptions, day);
+        _updatingDateFilter = false;
+        _ = ResetListAsync();
+    }
+
+    /// <summary>値の一致する項目 (無ければ「(すべて)」)。</summary>
+    private static DateOptionItem FindOption(IReadOnlyList<DateOptionItem> options, int? value) =>
+        options.FirstOrDefault(o => o.Value == value) ?? DateOptionItem.All;
+
+    private void RebuildDayOptions(int? year, int? month)
+    {
+        var days = year is { } y && month is { } m ? DateTime.DaysInMonth(y, m) : 0;
+        while (DayOptions.Count - 1 > days)
+            DayOptions.RemoveAt(DayOptions.Count - 1);
+        for (var d = DayOptions.Count; d <= days; d++)
+            DayOptions.Add(new DateOptionItem(d, $"{d}日"));
+    }
+
+    private DateRangeFilter? BuildDateRange() =>
+        SelectedYearOption?.Value is not { } year
+            ? null
+            : DateRangeFilter.FromLocalParts(
+                year, SelectedMonthOption?.Value, SelectedDayOption?.Value, TimeZoneInfo.Local);
+
+    /// <summary>
+    /// 年 ComboBox を表示対象の実データ範囲 (MIN/MAX sort_key のローカル暦) に合わせる。
+    /// 表示対象が前回と同じならクエリしない。選択中の年が範囲外になったら全期間へ戻す
+    /// (リセットは呼び出し元 ResetListAsync が続けて行うのでここでは呼ばない)。
+    /// </summary>
+    private async Task UpdateYearOptionsAsync(IReadOnlyList<string> usernames)
+    {
+        var key = string.Join("\n", usernames);
+        if (key == _boundsCacheKey)
+            return;
+        var bounds = await _tweets.GetDateBoundsAsync(usernames);
+        _boundsCacheKey = key;
+        IReadOnlyList<int> years = bounds is { } b
+            ? DateRangeFilter.YearsCovered(b.Min, b.Max, TimeZoneInfo.Local)
+            : Array.Empty<int>();
+
+        _updatingDateFilter = true;
+        var selectedYear = SelectedYearOption?.Value;
+        // 差分更新 (index 0 は「(すべて)」固定)。消えた年を除き、増えた年を昇順位置に挿す
+        for (var i = YearOptions.Count - 1; i >= 1; i--)
         {
-            // 表示中 (タグフィルタ適用後) のスナップショット。列挙中の Refresh は例外になる
-            var archives = VisibleArchives();
-            return IsMediaView
-                ? MediaGrid.ResetAsync(archives.Select(a => a.Username).ToList())
-                : TweetList.ResetAsync(archives, UnreadOnly);
+            if (!years.Contains(YearOptions[i].Value!.Value))
+                YearOptions.RemoveAt(i);
         }
-        if (SelectedSearch is { } search)
-            return IsMediaView
-                ? MediaGrid.ResetAsync([search.Username])
-                : TweetList.ResetAsync([new ArchiveInfo(search.Username, search.Label, null)], UnreadOnly);
-        if (SelectedUser is { } user)
-            return IsMediaView
-                ? MediaGrid.ResetAsync([user.Username])
-                : TweetList.ResetAsync(
-                    [new ArchiveInfo(user.Username, user.DisplayName, user.IconUrl)], UnreadOnly);
-        return IsMediaView
-            ? MediaGrid.ResetAsync([])
-            : TweetList.ResetAsync([], UnreadOnly);
+        foreach (var y in years)
+        {
+            var idx = 1;
+            while (idx < YearOptions.Count && YearOptions[idx].Value < y)
+                idx++;
+            if (idx == YearOptions.Count || YearOptions[idx].Value != y)
+                YearOptions.Insert(idx, new DateOptionItem(y, $"{y}年"));
+        }
+        if (selectedYear is { } sy && !years.Contains(sy))
+        {
+            // 表示対象の切替で選択中の年が範囲外になった → 全期間表示に戻す
+            SelectedYearOption = DateOptionItem.All;
+            SelectedMonthOption = DateOptionItem.All;
+            RebuildDayOptions(null, null);
+            SelectedDayOption = DateOptionItem.All;
+        }
+        else if (SelectedYearOption is null)
+        {
+            // 選択中の年の項目が入れ替わった場合の Selector による null 化を拾う
+            SelectedYearOption = FindOption(YearOptions, selectedYear);
+        }
+        _updatingDateFilter = false;
+        PrevPeriodCommand.NotifyCanExecuteChanged();
+        NextPeriodCommand.NotifyCanExecuteChanged();
+        ClearDateFilterCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanClearDateFilter() => SelectedYearOption?.Value is not null;
+
+    [RelayCommand(CanExecute = nameof(CanClearDateFilter))]
+    private void ClearDateFilter() => SetDateSelection(null, null, null);
+
+    /// <summary>
+    /// 選択中の最も細かい粒度で期間を direction 分ずらした先を求める。
+    /// 実データ範囲 (年リスト) の外に出る移動は不可 (クランプすると日粒度で
+    /// 「押しても動かない」ように見えるため、ボタン無効化で端を明示する)。
+    /// </summary>
+    private bool TryComputeMoved(int direction, out (int Year, int? Month, int? Day) moved)
+    {
+        moved = default;
+        if (SelectedYearOption?.Value is not { } year)
+            return false;
+        var month = SelectedMonthOption?.Value;
+        var day = SelectedDayOption?.Value;
+        (int Year, int? Month, int? Day) result;
+        if (month is { } m && day is { } d)
+        {
+            var date = new DateOnly(year, m, d).AddDays(direction);
+            result = (date.Year, date.Month, date.Day);
+        }
+        else if (month is { } m2)
+        {
+            var date = new DateOnly(year, m2, 1).AddMonths(direction);
+            result = (date.Year, date.Month, null);
+        }
+        else
+        {
+            result = (year + direction, null, null);
+        }
+        if (!YearOptions.Any(o => o.Value == result.Year))
+            return false;
+        moved = result;
+        return true;
+    }
+
+    private bool CanMovePrev() => TryComputeMoved(-1, out _);
+    private bool CanMoveNext() => TryComputeMoved(+1, out _);
+
+    [RelayCommand(CanExecute = nameof(CanMovePrev))]
+    private void PrevPeriod()
+    {
+        if (TryComputeMoved(-1, out var moved))
+            SetDateSelection(moved.Year, moved.Month, moved.Day);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanMoveNext))]
+    private void NextPeriod()
+    {
+        if (TryComputeMoved(+1, out var moved))
+            SetDateSelection(moved.Year, moved.Month, moved.Day);
     }
 
     /// <summary>統合タイムラインの対象 = サイドバーに表示中のユーザーと検索 (表示順)。</summary>
@@ -551,7 +765,10 @@ public sealed partial class MainViewModel : ObservableObject
             (IsAllTimeline && VisibleArchives().Any(a =>
                 string.Equals(a.Username, username, StringComparison.OrdinalIgnoreCase)));
         if (affectsCurrent)
+        {
+            _boundsCacheKey = null;   // 取込で期間の端が伸びている可能性がある
             await ResetListAsync();
+        }
     }
 
     /// <summary>検索バケット一覧を再読込 (ラベルは search.json の name → query → フォルダ名)。</summary>
@@ -684,6 +901,7 @@ public sealed partial class MainViewModel : ObservableObject
         var result = await _importer.RebuildUserAsync(user.Username, progress);
         StatusText = $"{user.Username}: 再構築完了 ({result.NewTweets:N0}件)";
         await RefreshUsersAsync();
+        _boundsCacheKey = null;   // 再構築で期間の端が変わっている可能性がある
         await ResetListAsync();
     }
 }

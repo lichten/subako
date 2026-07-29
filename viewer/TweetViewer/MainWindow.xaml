@@ -289,6 +289,24 @@
                     <ToggleButton IsChecked="{Binding UnreadOnly}" Content="未読のみ" Padding="8,2"
                                   IsEnabled="{Binding IsMediaView, Converter={StaticResource InverseBool}}" />
                     <Separator />
+                    <!-- 期間フィルタ (メディアビューでも有効なので IsEnabled は付けない) -->
+                    <TextBlock Text="期間:" VerticalAlignment="Center" Margin="4,0,2,0" />
+                    <ComboBox Width="82" ItemsSource="{Binding YearOptions}"
+                              SelectedItem="{Binding SelectedYearOption}" DisplayMemberPath="Label"
+                              ToolTip="表示する年 (データがある範囲のみ)" />
+                    <ComboBox Width="68" ItemsSource="{Binding MonthOptions}"
+                              SelectedItem="{Binding SelectedMonthOption}" DisplayMemberPath="Label"
+                              IsEnabled="{Binding IsMonthEnabled}" ToolTip="表示する月" />
+                    <ComboBox Width="64" ItemsSource="{Binding DayOptions}"
+                              SelectedItem="{Binding SelectedDayOption}" DisplayMemberPath="Label"
+                              IsEnabled="{Binding IsDayEnabled}" ToolTip="表示する日" />
+                    <Button Content="◀" Command="{Binding PrevPeriodCommand}" Padding="4,2"
+                            ToolTip="前の期間へ" />
+                    <Button Content="▶" Command="{Binding NextPeriodCommand}" Padding="4,2"
+                            ToolTip="次の期間へ" />
+                    <Button Content="×" Command="{Binding ClearDateFilterCommand}" Padding="4,2"
+                            ToolTip="期間フィルタを解除" />
+                    <Separator />
                     <Button Content="インデックス再構築" Command="{Binding RebuildCommand}" Padding="8,2"
                             ToolTip="選択中ユーザーの tweets インデックスを JSONL から作り直します(既読状態は保持)" />
                     <Separator />
@@ -536,6 +554,24 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <!-- 期間フィルタで 0 件のときの案内 (外側でビュー種別、内側で各 VM の状態を見る 2 段構え) -->
+            <Grid IsHitTestVisible="False"
+                  Visibility="{Binding IsMediaView, Converter={StaticResource InverseBoolToVis}}">
+                <TextBlock DataContext="{Binding TweetList}"
+                           Text="この期間のツイートはありません"
+                           Foreground="#888" FontSize="14"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="{Binding ShowEmptyNotice, Converter={StaticResource BoolToVis}}" />
+            </Grid>
+            <Grid IsHitTestVisible="False"
+                  Visibility="{Binding IsMediaView, Converter={StaticResource BoolToVis}}">
+                <TextBlock DataContext="{Binding MediaGrid}"
+                           Text="この期間のメディアはありません"
+                           Foreground="#888" FontSize="14"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="{Binding ShowEmptyNotice, Converter={StaticResource BoolToVis}}" />
+            </Grid>
             </Grid>
         </DockPanel>
 
