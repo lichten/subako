@@ -314,8 +314,9 @@ final class AppModel {
         mediaLoadedOnce = false
         Task {
             await refreshDateBounds()
-            await loadNextTimelinePage()
-            await loadNextMediaPage()
+            // リセットの初回ページは旧ロードが実行中でも必ず走らせる
+            await loadNextTimelinePage(force: true)
+            await loadNextMediaPage(force: true)
         }
     }
 
@@ -402,8 +403,9 @@ final class AppModel {
         mediaHasMore = true
         mediaLoadedOnce = false
         Task {
-            await loadNextTimelinePage()
-            await loadNextMediaPage()
+            // リセットの初回ページは旧ロードが実行中でも必ず走らせる
+            await loadNextTimelinePage(force: true)
+            await loadNextMediaPage(force: true)
         }
     }
 
@@ -423,8 +425,10 @@ final class AppModel {
 
     // MARK: - ページング (§5.6)
 
-    func loadNextTimelinePage() async {
-        guard let tweetRepo, let db, !timelineLoading, timelineHasMore else { return }
+    /// force = リセット直後の初回ロード。旧リセットのロードが実行中でもスキップしない
+    /// (旧ロードの結果は世代ガードで破棄されるため、ここで譲ると空のままになる)
+    func loadNextTimelinePage(force: Bool = false) async {
+        guard let tweetRepo, let db, force || !timelineLoading, timelineHasMore else { return }
         let usernames = currentUsernames
         guard !usernames.isEmpty else {
             timelineLoadedOnce = true
@@ -433,6 +437,10 @@ final class AppModel {
         }
         timelineLoading = true
         let gen = generation
+        // 自分より新しいリセットが始まっていたら、timelineLoading は後発 (force:true で
+        // 入ってきた側) の所有物なので触らない。横取り解除すると、リセット中に
+        // 余計な追加ロードが割り込んで表示位置が乱れる
+        defer { if gen == generation { timelineLoading = false } }
         let cursor = timelineCursor
         let range = dateFilter.range()
         let dataDir = db.dataDir
@@ -465,11 +473,11 @@ final class AppModel {
             timelineHasMore = false
             timelineLoadedOnce = true
         }
-        timelineLoading = false
     }
 
-    func loadNextMediaPage() async {
-        guard let tweetRepo, let db, !mediaLoading, mediaHasMore else { return }
+    /// force の意味は loadNextTimelinePage と同じ。
+    func loadNextMediaPage(force: Bool = false) async {
+        guard let tweetRepo, let db, force || !mediaLoading, mediaHasMore else { return }
         let usernames = currentUsernames
         guard !usernames.isEmpty else {
             mediaLoadedOnce = true
@@ -478,6 +486,7 @@ final class AppModel {
         }
         mediaLoading = true
         let gen = generation
+        defer { if gen == generation { mediaLoading = false } }
         let cursor = mediaCursor
         let range = dateFilter.range()
         let dataDir = db.dataDir
@@ -510,7 +519,6 @@ final class AppModel {
             mediaHasMore = false
             mediaLoadedOnce = true
         }
-        mediaLoading = false
     }
 
     // MARK: - 既読 (§8)
