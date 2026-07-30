@@ -31,6 +31,7 @@ public sealed partial class TweetListViewModel : ObservableObject
     private readonly Dictionary<string, IReadOnlyList<string>> _duplicateArchives =
         new(StringComparer.Ordinal);
     private bool _unreadOnly;
+    private bool _ascending;
     private DateRangeFilter? _dateRange;
     private (long SortKey, long IdInt)? _cursor;
     private bool _loading;
@@ -61,7 +62,8 @@ public sealed partial class TweetListViewModel : ObservableObject
 
     /// <summary>表示対象を差し替える。archives が複数なら統合タイムライン (時系列にマージ)。</summary>
     public async Task ResetAsync(
-        IReadOnlyList<ArchiveInfo> archives, bool unreadOnly, DateRangeFilter? dateRange)
+        IReadOnlyList<ArchiveInfo> archives, bool unreadOnly, DateRangeFilter? dateRange,
+        bool ascending = false)
     {
         var version = ++_resetVersion;
         await _readQueue.FlushAsync();
@@ -72,6 +74,7 @@ public sealed partial class TweetListViewModel : ObservableObject
                 (_db.ImagesDir(archive.Username), archive.DisplayName, archive.IconUrl);
         _duplicateArchives.Clear();
         _unreadOnly = unreadOnly;
+        _ascending = ascending;
         _dateRange = dateRange;
         _cursor = null;
         ShowEmptyNotice = false;
@@ -94,7 +97,8 @@ public sealed partial class TweetListViewModel : ObservableObject
         _loading = true;
         try
         {
-            var page = await _repo.GetPageAsync(usernames, _unreadOnly, _cursor, PageSize, _dateRange);
+            var page = await _repo.GetPageAsync(
+                usernames, _unreadOnly, _cursor, PageSize, _dateRange, _ascending);
             if (version != _resetVersion)
                 return;   // リセットで破棄
 

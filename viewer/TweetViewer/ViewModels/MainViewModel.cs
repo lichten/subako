@@ -88,6 +88,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _unreadOnly;
 
+    /// <summary>true = 古い順 (昇順)。既定は新しい順。</summary>
+    [ObservableProperty]
+    private bool _ascending;
+
     /// <summary>
     /// 期間フィルタの年 ComboBox 用。先頭は「(すべて)」固定。
     /// TagFilterOptions と同じ理由で Clear() 禁止 (Reset 通知で Selector が選択を捨てる)。
@@ -140,10 +144,11 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel(
         ViewerDatabase db, UserRepository users, TweetRepository tweets, TagRepository tags,
         JsonlImporter importer, ReadMarkQueue readQueue, FetchProcessService fetchService,
-        IconCache iconCache, bool unreadOnly = false, long? tagFilterId = null)
+        IconCache iconCache, bool unreadOnly = false, long? tagFilterId = null, bool ascending = false)
     {
         // プロパティ経由だと SelectedUser 確定前に ResetListAsync が走るためフィールドを直接初期化
         _unreadOnly = unreadOnly;
+        _ascending = ascending;
         _initialTagFilterId = tagFilterId;
         _db = db;
         _users = users;
@@ -424,6 +429,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnUnreadOnlyChanged(bool value) => _ = ResetListAsync();
 
+    partial void OnAscendingChanged(bool value) => _ = ResetListAsync();
+
     partial void OnIsMediaViewChanged(bool value) => _ = ResetListAsync();
 
     /// <summary>ResetListAsync の並走ガード (年リスト取得の await 中に次のリセットが始まりうる)。</summary>
@@ -446,8 +453,8 @@ public sealed partial class MainViewModel : ObservableObject
 
         var range = BuildDateRange();
         await (IsMediaView
-            ? MediaGrid.ResetAsync(usernames, range)
-            : TweetList.ResetAsync(archives, UnreadOnly, range));
+            ? MediaGrid.ResetAsync(usernames, range, Ascending)
+            : TweetList.ResetAsync(archives, UnreadOnly, range, Ascending));
     }
 
     /// <summary>年→月→日の連鎖クリアで ResetListAsync を多重発火させないためのフラグ。</summary>

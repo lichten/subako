@@ -288,6 +288,9 @@
                     <Separator />
                     <ToggleButton IsChecked="{Binding UnreadOnly}" Content="未読のみ" Padding="8,2"
                                   IsEnabled="{Binding IsMediaView, Converter={StaticResource InverseBool}}" />
+                    <!-- 並び順はメディアビューでも有効なので IsEnabled は付けない -->
+                    <ToggleButton IsChecked="{Binding Ascending}" Content="古い順" Padding="8,2"
+                                  ToolTip="古いツイートから順に表示します" />
                     <Separator />
                     <!-- 期間フィルタ (メディアビューでも有効なので IsEnabled は付けない) -->
                     <TextBlock Text="期間:" VerticalAlignment="Center" Margin="4,0,2,0" />

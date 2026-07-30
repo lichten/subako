@@ -68,6 +68,7 @@ public partial class MainWindow : Window
         }
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
         _settings.UnreadOnly = Vm.UnreadOnly;
+        _settings.Ascending = Vm.Ascending;
         _settings.TagFilterId = Vm.SelectedTagFilter?.TagId;
         if (SidebarColumn.ActualWidth > 0)
             _settings.SidebarWidth = SidebarColumn.ActualWidth;

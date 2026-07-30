@@ -54,7 +54,7 @@ public partial class App : Application
         var iconCache = new IconCache(settings.EffectiveDataDir);
 
         var mainVm = new MainViewModel(db, users, tweets, tags, importer, _readQueue, fetchService, iconCache,
-            settings.UnreadOnly, settings.TagFilterId);
+            settings.UnreadOnly, settings.TagFilterId, settings.Ascending);
         var window = new MainWindow(settings) { DataContext = mainVm };
         MainWindow = window;
         // 初回セットアップで OnExplicitShutdown に切り替えた場合はここで通常動作に戻す

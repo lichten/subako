@@ -35,7 +35,7 @@ public sealed class TweetRepository
     /// </summary>
     public Task<TweetPage> GetPageAsync(
         IReadOnlyList<string> usernames, bool unreadOnly, (long SortKey, long IdInt)? after, int limit,
-        DateRangeFilter? range = null, CancellationToken ct = default)
+        DateRangeFilter? range = null, bool ascending = false, CancellationToken ct = default)
     {
         if (usernames.Count == 0)
         {
@@ -59,11 +59,16 @@ public sealed class TweetRepository
                 t.author_username, t.author_display_name, t.author_icon_url,
                 (r.tweet_id IS NOT NULL) AS is_read
                 """;
-            const string filters = """
+            // 並び順はパラメータではなく SQL 文字列で分岐する ($asc を OR で混ぜると
+            // 索引レンジに落ちず全走査に退化しうる)。2 列とも同方向にすること
+            // (混在ソートは ix_tweets_user_sort の逆走査が効かない)
+            var cmp = ascending ? ">" : "<";
+            var dir = ascending ? "ASC" : "DESC";
+            var filters = $"""
                   AND ($unreadOnly = 0 OR r.tweet_id IS NULL)
                   AND ($noRange = 1 OR (t.sort_key >= $from AND t.sort_key < $to))
-                  AND ($noCursor = 1 OR t.sort_key < $sk
-                       OR (t.sort_key = $sk AND t.id_int < $idi))
+                  AND ($noCursor = 1 OR t.sort_key {cmp} $sk
+                       OR (t.sort_key = $sk AND t.id_int {cmp} $idi))
                 """;
             // 単一アーカイブは PK (username, tweet_id) により重複しないため、
             // 窓関数を通さず ix_tweets_user_sort の索引ストリームで返す
@@ -75,7 +80,7 @@ public sealed class TweetRepository
                   LEFT JOIN read_state r ON r.tweet_id = t.tweet_id
                   WHERE t.username = $u0
                   {filters}
-                  ORDER BY t.sort_key DESC, t.id_int DESC
+                  ORDER BY t.sort_key {dir}, t.id_int {dir}
                   LIMIT $limit
                   """
                 : $"""
@@ -90,7 +95,7 @@ public sealed class TweetRepository
                       {filters}
                   )
                   WHERE rn = 1
-                  ORDER BY sort_key DESC, id_int DESC
+                  ORDER BY sort_key {dir}, id_int {dir}
                   LIMIT $limit
                   """;
             cmd.Parameters.AddWithValue("$unreadOnly", unreadOnly ? 1 : 0);
@@ -227,14 +232,14 @@ public sealed class TweetRepository
     }
 
     /// <summary>
-    /// メディア欄用: 本人の投稿画像のみ (origin=0、RT 除外) を新しい順に。
+    /// メディア欄用: 本人の投稿画像のみ (origin=0、RT 除外) を ascending=false なら新しい順に。
     /// keyset カーソルは (sort_key, id_int, idx) の3要素。
     /// 重複排除は GetPageAsync と同じ理由・同じ規則で、パーティションは (tweet_id, idx)
     /// (tweet_id だけだと複数枚画像が 1 枚に潰れる)。
     /// </summary>
     public Task<List<MediaPageRow>> GetMediaPageAsync(
         IReadOnlyList<string> usernames, (long SortKey, long IdInt, int Idx)? after, int limit,
-        DateRangeFilter? range = null, CancellationToken ct = default)
+        DateRangeFilter? range = null, bool ascending = false, CancellationToken ct = default)
     {
         if (usernames.Count == 0)
             return Task.FromResult(new List<MediaPageRow>());
@@ -243,13 +248,18 @@ public sealed class TweetRepository
             using var conn = _db.OpenConnection();
             using var cmd = conn.CreateCommand();
             var inList = BindInList(cmd, "$u", usernames);
-            const string filters = """
+            // 方向の分岐は GetPageAsync と同じ理由で SQL 文字列側で行う。
+            // 第 3 要素 idx はツイート内の並びで常に昇順のため、比較 (> $ix) も
+            // ORDER BY (idx ASC) も方向によらず不変な点に注意
+            var cmp = ascending ? ">" : "<";
+            var dir = ascending ? "ASC" : "DESC";
+            var filters = $"""
                   AND m.origin = 0
                   AND t.tweet_type != 1
                   AND ($noRange = 1 OR (t.sort_key >= $from AND t.sort_key < $to))
                   AND ($noCursor = 1
-                       OR t.sort_key < $sk
-                       OR (t.sort_key = $sk AND t.id_int < $ii)
+                       OR t.sort_key {cmp} $sk
+                       OR (t.sort_key = $sk AND t.id_int {cmp} $ii)
                        OR (t.sort_key = $sk AND t.id_int = $ii AND m.idx > $ix))
                 """;
             // 単一アーカイブは重複しないため窓関数を通らない (GetPageAsync と同じ理由)
@@ -261,7 +271,7 @@ public sealed class TweetRepository
                   JOIN tweets t ON t.tweet_id = m.tweet_id
                   WHERE t.username = $u0
                   {filters}
-                  ORDER BY t.sort_key DESC, t.id_int DESC, m.idx ASC
+                  ORDER BY t.sort_key {dir}, t.id_int {dir}, m.idx ASC
                   LIMIT $limit
                   """
                 : $"""
@@ -277,7 +287,7 @@ public sealed class TweetRepository
                       {filters}
                   )
                   WHERE rn = 1
-                  ORDER BY sort_key DESC, id_int DESC, idx ASC
+                  ORDER BY sort_key {dir}, id_int {dir}, idx ASC
                   LIMIT $limit
                   """;
             cmd.Parameters.AddWithValue("$noRange", range is null ? 1 : 0);

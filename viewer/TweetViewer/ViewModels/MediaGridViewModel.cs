@@ -38,6 +38,7 @@ public sealed partial class MediaGridViewModel : ObservableObject
     private readonly TweetRepository _repo;
 
     private IReadOnlyList<string> _usernames = [];
+    private bool _ascending;
     private DateRangeFilter? _dateRange;
     private (long SortKey, long IdInt, int Idx)? _cursor;
     private bool _loading;
@@ -62,10 +63,12 @@ public sealed partial class MediaGridViewModel : ObservableObject
     }
 
     /// <summary>表示対象を差し替える。usernames が複数なら統合表示 (時系列にマージ)。</summary>
-    public async Task ResetAsync(IReadOnlyList<string> usernames, DateRangeFilter? dateRange)
+    public async Task ResetAsync(
+        IReadOnlyList<string> usernames, DateRangeFilter? dateRange, bool ascending = false)
     {
         var version = ++_resetVersion;
         _usernames = usernames;
+        _ascending = ascending;
         _dateRange = dateRange;
         _cursor = null;
         ShowEmptyNotice = false;
@@ -87,7 +90,8 @@ public sealed partial class MediaGridViewModel : ObservableObject
         _loading = true;
         try
         {
-            var page = await _repo.GetMediaPageAsync(usernames, _cursor, PageSize, _dateRange);
+            var page = await _repo.GetMediaPageAsync(
+                usernames, _cursor, PageSize, _dateRange, _ascending);
             if (version != _resetVersion)
                 return;
 
