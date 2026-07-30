@@ -27,3 +27,12 @@ jobs:
         run: |
           pip install -r requirements-dev.txt
           pytest
+
+  test-mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Swift build + test (SubakoCore)
+        working-directory: mac
+        run: swift test

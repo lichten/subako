@@ -11,3 +11,8 @@ venv/
 **/bin/
 **/obj/
 .vs/
+
+# Swift (mac/)
+mac/.build/
+mac/dist/
+mac/.swiftpm/
