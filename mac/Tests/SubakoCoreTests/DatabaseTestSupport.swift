@@ -52,23 +52,20 @@ struct TestDataDir {
     }
 
     func countTweets(_ username: String) throws -> Int64 {
-        try db.reader.read { db in
-            try Int64.fetchOne(
-                db, sql: "SELECT COUNT(*) FROM tweets WHERE username = ?",
-                arguments: [username]) ?? 0
+        try db.readSync { conn in
+            try conn.scalarInt64(
+                "SELECT COUNT(*) FROM tweets WHERE username = ?", [username]) ?? 0
         }
     }
 
-    func scalar<T: DatabaseValueConvertible & StatementColumnConvertible & Sendable>(
-        _ sql: String, as type: T.Type = T.self
-    ) throws -> T? {
-        try db.reader.read { db in
-            try T.fetchOne(db, sql: sql)
-        }
+    func scalarString(_ sql: String) throws -> String? {
+        try db.readSync { conn in try conn.scalarString(sql) }
+    }
+
+    func scalarInt64(_ sql: String) throws -> Int64? {
+        try db.readSync { conn in try conn.scalarInt64(sql) }
     }
 }
-
-import GRDB
 
 func tweetLine(_ id: Int64, date: String = "Wed Apr 11 08:26:14 +0000 2007") -> String {
     #"{"id":"\#(id)","created_at":"\#(date)","full_text":"tweet \#(id) 日本語","user":{"username":"author\#(id)","display_name":"Author \#(id)"},"entities":[]}"#

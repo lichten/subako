@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 
 /// タイムライン 1 ページ分。archivesByTweetId は複数アーカイブに存在する tweet_id のみを持つ
 /// (既読化時に該当する全アーカイブの未読数を減らすため。表示中でないアーカイブも含む)。
@@ -70,7 +69,7 @@ public final class TweetRepository: Sendable {
         if usernames.isEmpty {
             return .empty
         }
-        return try await db.reader.read { db in
+        return try await db.read { conn in
             let placeholders = usernames.map { _ in "?" }.joined(separator: ",")
             let columns = """
                 t.tweet_id, t.id_int, t.username, t.created_at_utc, t.sort_key,
@@ -120,7 +119,7 @@ public final class TweetRepository: Sendable {
                   ORDER BY sort_key \(dir), id_int \(dir)
                   LIMIT ?
                   """
-            var args: [DatabaseValueConvertible] = usernames
+            var args: [SQLiteBindable?] = usernames
             args.append(unreadOnly ? 1 : 0)
             args.append(range == nil ? 1 : 0)
             args.append(range?.fromEpoch ?? 0)
@@ -131,84 +130,81 @@ public final class TweetRepository: Sendable {
             args.append(after?.idInt ?? 0)
             args.append(limit)
 
-            var rows: [TweetRow] = []
-            let cursor = try Row.fetchCursor(db, sql: sql, arguments: StatementArguments(args)!)
-            while let row = try cursor.next() {
-                rows.append(TweetRow(
-                    tweetId: row["tweet_id"],
-                    idInt: row["id_int"],
-                    username: row["username"],
-                    authorUsername: row["author_username"],
-                    authorDisplayName: row["author_display_name"],
-                    authorIconUrl: row["author_icon_url"],
-                    createdAtUtc: row["created_at_utc"],
-                    sortKey: row["sort_key"],
-                    type: TweetType(rawValue: row["tweet_type"]) ?? .tweet,
-                    fullText: row["full_text"],
-                    lang: row["lang"],
-                    inReplyToUsername: row["in_reply_to_username"],
-                    rtUsername: row["rt_username"],
-                    rtDisplayName: row["rt_display_name"],
-                    rtText: row["rt_text"],
-                    rtIconUrl: row["rt_icon_url"],
-                    quotedUsername: row["quoted_username"],
-                    quotedDisplayName: row["quoted_display_name"],
-                    quotedText: row["quoted_text"],
-                    quotedIconUrl: row["quoted_icon_url"],
-                    likeCount: row["like_count"],
-                    retweetCount: row["retweet_count"],
-                    replyCount: row["reply_count"],
-                    viewCount: row["view_count"],
-                    mediaCount: row["media_count"],
-                    rawOffset: row["raw_offset"],
-                    rawLength: row["raw_length"],
-                    isRead: (row["is_read"] as Int64? ?? 0) != 0))
+            let rows = try conn.query(sql, args).map { row in
+                TweetRow(
+                    tweetId: row.string("tweet_id") ?? "",
+                    idInt: row.int64("id_int") ?? 0,
+                    username: row.string("username") ?? "",
+                    authorUsername: row.string("author_username"),
+                    authorDisplayName: row.string("author_display_name"),
+                    authorIconUrl: row.string("author_icon_url"),
+                    createdAtUtc: row.string("created_at_utc") ?? "",
+                    sortKey: row.int64("sort_key") ?? 0,
+                    type: TweetType(rawValue: row.int("tweet_type") ?? 0) ?? .tweet,
+                    fullText: row.string("full_text") ?? "",
+                    lang: row.string("lang"),
+                    inReplyToUsername: row.string("in_reply_to_username"),
+                    rtUsername: row.string("rt_username"),
+                    rtDisplayName: row.string("rt_display_name"),
+                    rtText: row.string("rt_text"),
+                    rtIconUrl: row.string("rt_icon_url"),
+                    quotedUsername: row.string("quoted_username"),
+                    quotedDisplayName: row.string("quoted_display_name"),
+                    quotedText: row.string("quoted_text"),
+                    quotedIconUrl: row.string("quoted_icon_url"),
+                    likeCount: row.int64("like_count") ?? 0,
+                    retweetCount: row.int64("retweet_count") ?? 0,
+                    replyCount: row.int64("reply_count") ?? 0,
+                    viewCount: row.int64("view_count") ?? 0,
+                    mediaCount: row.int("media_count") ?? 0,
+                    rawOffset: row.int64("raw_offset") ?? 0,
+                    rawLength: row.int64("raw_length") ?? 0,
+                    isRead: row.bool("is_read"))
             }
 
             let media = try Self.loadMedia(
-                db, tweetIds: rows.filter { $0.mediaCount > 0 }.map(\.tweetId))
-            let archives = try Self.loadDuplicateArchives(db, tweetIds: rows.map(\.tweetId))
+                conn, tweetIds: rows.filter { $0.mediaCount > 0 }.map(\.tweetId))
+            let archives = try Self.loadDuplicateArchives(conn, tweetIds: rows.map(\.tweetId))
             return TweetPage(rows: rows, media: media, archivesByTweetId: archives)
         }
     }
 
     /// ページ内 tweet_id ごとに、それを含む全アーカイブの username を引く。
     /// read_state は tweet_id 単位で全アーカイブ共通のため、既読化は表示中でない
-    /// アーカイブの未読数も実際に減らす。そのため表示中集合では絞らない。
-    /// 辞書には 2 アーカイブ以上に存在するものだけ載せる。
+    /// アーカイブの未読数も実際に減らす。辞書には 2 アーカイブ以上に存在するものだけ載せる。
     private static func loadDuplicateArchives(
-        _ db: Database, tweetIds: [String]
+        _ conn: SQLiteConnection, tweetIds: [String]
     ) throws -> [String: [String]] {
         guard !tweetIds.isEmpty else { return [:] }
         let placeholders = tweetIds.map { _ in "?" }.joined(separator: ",")
         var all: [String: [String]] = [:]
-        let cursor = try Row.fetchCursor(
-            db,
-            sql: "SELECT tweet_id, username FROM tweets WHERE tweet_id IN (\(placeholders)) ORDER BY tweet_id",
-            arguments: StatementArguments(tweetIds)!)
-        while let row = try cursor.next() {
-            all[row["tweet_id"], default: []].append(row["username"])
+        for row in try conn.query(
+            "SELECT tweet_id, username FROM tweets WHERE tweet_id IN (\(placeholders)) ORDER BY tweet_id",
+            tweetIds.map { $0 as SQLiteBindable? })
+        {
+            if let tweetId = row.string("tweet_id"), let username = row.string("username") {
+                all[tweetId, default: []].append(username)
+            }
         }
         return all.filter { $0.value.count > 1 }
     }
 
     private static func loadMedia(
-        _ db: Database, tweetIds: [String]
+        _ conn: SQLiteConnection, tweetIds: [String]
     ) throws -> [String: [TweetMediaRow]] {
         guard !tweetIds.isEmpty else { return [:] }
         let placeholders = tweetIds.map { _ in "?" }.joined(separator: ",")
         var result: [String: [TweetMediaRow]] = [:]
-        let cursor = try Row.fetchCursor(
-            db,
-            sql: "SELECT tweet_id, idx, source_url, ext, origin FROM tweet_media WHERE tweet_id IN (\(placeholders)) ORDER BY tweet_id, idx",
-            arguments: StatementArguments(tweetIds)!)
-        while let row = try cursor.next() {
+        for row in try conn.query(
+            "SELECT tweet_id, idx, source_url, ext, origin FROM tweet_media WHERE tweet_id IN (\(placeholders)) ORDER BY tweet_id, idx",
+            tweetIds.map { $0 as SQLiteBindable? })
+        {
             let media = TweetMediaRow(
-                tweetId: row["tweet_id"],
-                index: row["idx"],
-                sourceUrl: row["source_url"],
-                ext: row["ext"],
-                origin: MediaOrigin(rawValue: row["origin"]) ?? .own)
+                tweetId: row.string("tweet_id") ?? "",
+                index: row.int("idx") ?? 0,
+                sourceUrl: row.string("source_url"),
+                ext: row.string("ext") ?? "jpg",
+                origin: MediaOrigin(rawValue: row.int("origin") ?? 0) ?? .own)
             result[media.tweetId, default: []].append(media)
         }
         return result
@@ -224,7 +220,7 @@ public final class TweetRepository: Sendable {
         if usernames.isEmpty {
             return []
         }
-        return try await db.reader.read { db in
+        return try await db.read { conn in
             let placeholders = usernames.map { _ in "?" }.joined(separator: ",")
             // 第 3 要素 idx はツイート内の並びで常に昇順のため、比較 (> ?) も
             // ORDER BY (idx ASC) も方向によらず不変
@@ -266,7 +262,7 @@ public final class TweetRepository: Sendable {
                   ORDER BY sort_key \(dir), id_int \(dir), idx ASC
                   LIMIT ?
                   """
-            var args: [DatabaseValueConvertible] = usernames
+            var args: [SQLiteBindable?] = usernames
             args.append(range == nil ? 1 : 0)
             args.append(range?.fromEpoch ?? 0)
             args.append(range?.toEpochExclusive ?? 0)
@@ -279,20 +275,17 @@ public final class TweetRepository: Sendable {
             args.append(after?.idx ?? 0)
             args.append(limit)
 
-            var rows: [MediaPageRow] = []
-            let cursor = try Row.fetchCursor(db, sql: sql, arguments: StatementArguments(args)!)
-            while let row = try cursor.next() {
-                rows.append(MediaPageRow(
-                    tweetId: row["tweet_id"],
-                    idx: row["idx"],
-                    ext: row["ext"],
-                    sortKey: row["sort_key"],
-                    idInt: row["id_int"],
-                    fullText: row["full_text"],
-                    createdAtUtc: row["created_at_utc"],
-                    username: row["username"]))
+            return try conn.query(sql, args).map { row in
+                MediaPageRow(
+                    tweetId: row.string("tweet_id") ?? "",
+                    idx: row.int("idx") ?? 0,
+                    ext: row.string("ext") ?? "jpg",
+                    sortKey: row.int64("sort_key") ?? 0,
+                    idInt: row.int64("id_int") ?? 0,
+                    fullText: row.string("full_text") ?? "",
+                    createdAtUtc: row.string("created_at_utc") ?? "",
+                    username: row.string("username") ?? "")
             }
-            return rows
         }
     }
 
@@ -301,30 +294,27 @@ public final class TweetRepository: Sendable {
         if usernames.isEmpty {
             return nil
         }
-        return try await db.reader.read { db in
+        return try await db.read { conn -> (min: Int64, max: Int64)? in
             let placeholders = usernames.map { _ in "?" }.joined(separator: ",")
-            let row = try Row.fetchOne(
-                db,
-                sql: "SELECT MIN(sort_key) AS mn, MAX(sort_key) AS mx FROM tweets WHERE username IN (\(placeholders))",
-                arguments: StatementArguments(usernames)!)
-            guard let row, let mn = row["mn"] as Int64?, let mx = row["mx"] as Int64? else {
-                return nil
-            }
+            guard let row = try conn.queryOne(
+                "SELECT MIN(sort_key) AS mn, MAX(sort_key) AS mx FROM tweets WHERE username IN (\(placeholders))",
+                usernames.map { $0 as SQLiteBindable? }),
+                let mn = row.int64("mn"), let mx = row.int64("mx")
+            else { return nil }
             return (mn, mx)
         }
     }
 
     /// 手動トグル用の即時書込。
     public func setRead(tweetId: String, username: String, read: Bool) async throws {
-        try await db.writer().write { db in
+        try await db.write { conn in
             if read {
-                try db.execute(
-                    sql: "INSERT OR IGNORE INTO read_state (tweet_id, username, read_at) VALUES (?, ?, ?)",
-                    arguments: [tweetId, username, DateParsers.utcNow()])
+                try conn.execute(
+                    "INSERT OR IGNORE INTO read_state (tweet_id, username, read_at) VALUES (?, ?, ?)",
+                    [tweetId, username, DateParsers.utcNow()])
             } else {
-                try db.execute(
-                    sql: "DELETE FROM read_state WHERE tweet_id = ?",
-                    arguments: [tweetId])
+                try conn.execute(
+                    "DELETE FROM read_state WHERE tweet_id = ?", [tweetId])
             }
         }
     }
@@ -333,11 +323,11 @@ public final class TweetRepository: Sendable {
     public func markRead(_ marks: [(tweetId: String, username: String)]) async throws {
         guard !marks.isEmpty else { return }
         let now = DateParsers.utcNow()
-        try await db.writer().write { db in
+        try await db.write { conn in
             for mark in marks {
-                try db.execute(
-                    sql: "INSERT OR IGNORE INTO read_state (tweet_id, username, read_at) VALUES (?, ?, ?)",
-                    arguments: [mark.tweetId, mark.username, now])
+                try conn.execute(
+                    "INSERT OR IGNORE INTO read_state (tweet_id, username, read_at) VALUES (?, ?, ?)",
+                    [mark.tweetId, mark.username, now])
             }
         }
     }

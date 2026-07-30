@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 
 public struct ImportResult: Sendable, Equatable {
     public let newTweets: Int
@@ -33,12 +32,11 @@ public final class JsonlImporter: Sendable {
         guard FileManager.default.fileExists(atPath: jsonlPath) else {
             return ImportResult(newTweets: 0, skippedLines: 0, newOffset: 0)
         }
-        let writer = try db.writer()
+        guard !db.isReadOnly else { throw ViewerDatabaseError.readOnlyMode }
 
-        var offset = try await writer.read { db in
-            try Int64.fetchOne(
-                db, sql: "SELECT jsonl_offset FROM users WHERE username = ?",
-                arguments: [username]) ?? 0
+        var offset = try await db.read { conn in
+            try conn.scalarInt64(
+                "SELECT jsonl_offset FROM users WHERE username = ?", [username]) ?? 0
         }
 
         guard let handle = FileHandle(forReadingAtPath: jsonlPath) else {
@@ -79,16 +77,16 @@ public final class JsonlImporter: Sendable {
 
             let batchCopy = batch
             let endOffset = batchEndOffset
-            let insertedCount = try await writer.write { db in
+            let insertedCount = try await db.write { conn in
                 var inserted = 0
                 for entry in batchCopy {
-                    if try Self.insertTweet(db, entry.tweet) {
+                    if try Self.insertTweet(conn, entry.tweet) {
                         inserted += 1
                     }
                 }
-                try db.execute(
-                    sql: "UPDATE users SET jsonl_offset = ? WHERE username = ?",
-                    arguments: [endOffset, username])
+                try conn.execute(
+                    "UPDATE users SET jsonl_offset = ? WHERE username = ?",
+                    [endOffset, username])
                 return inserted
             }
             imported += insertedCount
@@ -100,23 +98,23 @@ public final class JsonlImporter: Sendable {
         // 検索バケットは投稿者がバラバラなので更新しない (表示名 = クエリのまま保つ)
         var latestProfile: (displayName: String?, iconUrl: String?) = (nil, nil)
         if imported > 0, !SearchBuckets.isBucketId(username) {
-            latestProfile = try await queryLatestProfile(writer, username: username)
+            latestProfile = try await queryLatestProfile(username: username)
         }
 
         let profile = latestProfile
-        try await writer.write { db in
-            try db.execute(
-                sql: "UPDATE users SET last_import_at = ? WHERE username = ?",
-                arguments: [DateParsers.utcNow(), username])
+        try await db.write { conn in
+            try conn.execute(
+                "UPDATE users SET last_import_at = ? WHERE username = ?",
+                [DateParsers.utcNow(), username])
             if let displayName = profile.displayName {
-                try db.execute(
-                    sql: "UPDATE users SET display_name = ? WHERE username = ?",
-                    arguments: [displayName, username])
+                try conn.execute(
+                    "UPDATE users SET display_name = ? WHERE username = ?",
+                    [displayName, username])
             }
             if let iconUrl = profile.iconUrl {
-                try db.execute(
-                    sql: "UPDATE users SET icon_url = ? WHERE username = ?",
-                    arguments: [iconUrl, username])
+                try conn.execute(
+                    "UPDATE users SET icon_url = ? WHERE username = ?",
+                    [iconUrl, username])
             }
         }
 
@@ -133,29 +131,30 @@ public final class JsonlImporter: Sendable {
     }
 
     private func resetDerived(_ username: String) async throws {
-        try await db.writer().write { db in
+        try await db.write { conn in
             // tweet_media は tweet_id 単位で全バケット共有のため、
             // 行削除後に孤児になったものだけ消す
-            try db.execute(
-                sql: """
-                    DELETE FROM tweets WHERE username = :u;
-                    DELETE FROM tweet_media WHERE tweet_id NOT IN (SELECT tweet_id FROM tweets);
-                    UPDATE users SET jsonl_offset = 0 WHERE username = :u;
-                    """,
-                arguments: ["u": username])
+            try conn.execute("DELETE FROM tweets WHERE username = ?", [username])
+            try conn.execute(
+                "DELETE FROM tweet_media WHERE tweet_id NOT IN (SELECT tweet_id FROM tweets)")
+            try conn.execute(
+                "UPDATE users SET jsonl_offset = 0 WHERE username = ?", [username])
         }
     }
 
     /// 生 JSONL から最新ツイートの user オブジェクトをシーク読みする。
     private func queryLatestProfile(
-        _ reader: any DatabaseReader, username: String
+        username: String
     ) async throws -> (displayName: String?, iconUrl: String?) {
-        let location = try await reader.read { db in
-            try Row.fetchOne(db, sql: """
+        let location = try await db.read { conn -> (offset: Int64, length: Int64)? in
+            guard let row = try conn.queryOne("""
                 SELECT raw_offset, raw_length FROM tweets
                 WHERE username = ? ORDER BY sort_key DESC, id_int DESC LIMIT 1
-                """, arguments: [username])
-                .map { (offset: $0["raw_offset"] as Int64, length: $0["raw_length"] as Int64) }
+                """, [username]),
+                let offset = row.int64("raw_offset"),
+                let length = row.int64("raw_length")
+            else { return nil }
+            return (offset, length)
         }
         guard let location,
               let handle = FileHandle(forReadingAtPath: db.jsonlPath(username))
@@ -174,22 +173,22 @@ public final class JsonlImporter: Sendable {
         }
     }
 
-    static func insertTweet(_ db: Database, _ parsed: ParsedTweet) throws -> Bool {
+    static func insertTweet(_ conn: SQLiteConnection, _ parsed: ParsedTweet) throws -> Bool {
         let r = parsed.row
-        try db.execute(
-            sql: """
-                INSERT OR IGNORE INTO tweets (
-                  tweet_id, id_int, username,
-                  author_username, author_display_name, author_icon_url,
-                  created_at_utc, sort_key, tweet_type,
-                  full_text, lang, in_reply_to_username,
-                  rt_username, rt_display_name, rt_text, rt_icon_url,
-                  quoted_username, quoted_display_name, quoted_text, quoted_icon_url,
-                  like_count, retweet_count, reply_count, view_count,
-                  media_count, raw_offset, raw_length
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-            arguments: [
+        try conn.execute(
+            """
+            INSERT OR IGNORE INTO tweets (
+              tweet_id, id_int, username,
+              author_username, author_display_name, author_icon_url,
+              created_at_utc, sort_key, tweet_type,
+              full_text, lang, in_reply_to_username,
+              rt_username, rt_display_name, rt_text, rt_icon_url,
+              quoted_username, quoted_display_name, quoted_text, quoted_icon_url,
+              like_count, retweet_count, reply_count, view_count,
+              media_count, raw_offset, raw_length
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
                 r.tweetId, r.idInt, r.username,
                 r.authorUsername, r.authorDisplayName, r.authorIconUrl,
                 r.createdAtUtc, r.sortKey, r.type.rawValue,
@@ -199,15 +198,15 @@ public final class JsonlImporter: Sendable {
                 r.likeCount, r.retweetCount, r.replyCount, r.viewCount,
                 r.mediaCount, r.rawOffset, r.rawLength,
             ])
-        let inserted = db.changesCount > 0
+        let inserted = conn.changesCount > 0
         if inserted {
             for m in parsed.media {
-                try db.execute(
-                    sql: """
-                        INSERT OR IGNORE INTO tweet_media (tweet_id, idx, source_url, ext, origin)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                    arguments: [m.tweetId, m.index, m.sourceUrl, m.ext, m.origin.rawValue])
+                try conn.execute(
+                    """
+                    INSERT OR IGNORE INTO tweet_media (tweet_id, idx, source_url, ext, origin)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    [m.tweetId, m.index, m.sourceUrl, m.ext, m.origin.rawValue])
             }
         }
         return inserted

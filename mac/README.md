@@ -1,9 +1,15 @@
 # Subako macOS 版
 
 Windows 版 (`viewer/TweetViewer`) と同じデータフォルダを読む macOS ネイティブビューア。
-Swift + SwiftUI + [GRDB.swift](https://github.com/groue/GRDB.swift)。
-仕様の正典は [docs/mac-port-notes.md](../docs/mac-port-notes.md) と、そこから参照される
-data-layer.md / viewer-features.md / fetcher-cli.md。
+Swift + SwiftUI。仕様の正典は [docs/mac-port-notes.md](../docs/mac-port-notes.md) と、
+そこから参照される data-layer.md / viewer-features.md / fetcher-cli.md。
+
+SQLite は同梱ビルド ([swift-toolchain-sqlite](https://github.com/swiftlang/swift-toolchain-sqlite))
+を使う。**macOS 標準の libsqlite3 は使えない**: Google Drive が同期アップロード用に
+開いている `viewer.db-wal` へハードリンクを作ると、標準 SQLite の保護機構が
+「API 違反 (vnode linked while in use)」として接続を無効化し、以後の全操作が
+disk I/O error (SQLITE_IOERR_VNODE) になるため。Windows 版も自前 SQLite
+(SQLitePCLRaw) を同梱しており、これで両者の挙動が揃う。
 
 ## 構成
 

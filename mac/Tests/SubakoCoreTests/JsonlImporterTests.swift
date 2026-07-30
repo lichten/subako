@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 import Testing
 @testable import SubakoCore
 
@@ -158,9 +157,8 @@ import Testing
         #expect(result.newTweets == 1)
 
         // バケットの表示名は他人の user オブジェクトで上書きされない
-        let displayName = try t.scalar(
-            "SELECT display_name FROM users WHERE username = 'searches/kw-12345678'",
-            as: String.self)
+        let displayName = try t.scalarString(
+            "SELECT display_name FROM users WHERE username = 'searches/kw-12345678'")
         #expect(displayName == nil)
 
         // author 列には実投稿者が入る

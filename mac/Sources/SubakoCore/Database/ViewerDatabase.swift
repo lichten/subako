@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 
 public enum ViewerDatabaseError: Error, LocalizedError, Equatable {
     /// schema_version が自分の対応バージョンより新しい (開いてはならない)。
@@ -25,19 +24,30 @@ public enum ViewerDatabaseError: Error, LocalizedError, Equatable {
 /// tweets / tweet_media は JSONL から再構築可能な派生データ、
 /// users / read_state / tags / user_tags は正データ。
 ///
-/// - 書込モード: DatabasePool (WAL / busy_timeout=5000 / synchronous=NORMAL)。
-///   書込は GRDB が直列化する (書き手はプロセス内で 1 つ、の契約)。
-/// - 閲覧専用モード: `file:...?mode=ro&immutable=1` で開き、
-///   一切の書込 API を拒否する (Google Drive 同期中の WAL に巻き込まれない)。
-public final class ViewerDatabase: Sendable {
+/// - 書込モード: 永続書込接続 1 本 (直列キュー = 書き手はプロセス内で 1 つ、の契約) +
+///   読みはクエリごとの短命接続 (WAL / busy_timeout=5000 / synchronous=NORMAL)。
+///   Windows 版 (接続プール + 単一書込ロック) と同じ構図。
+/// - 閲覧専用モード: `file:...?mode=ro&immutable=1` の接続 1 本で、
+///   一切の書込 API を拒否する (同期中の WAL に巻き込まれない)。
+///
+/// SQLite は同梱ビルド (SwiftToolchainCSQLite) を使う。macOS 標準の libsqlite3 は
+/// Google Drive がアップロード用に作るハードリンクを「API 違反」として接続を
+/// 無効化する (IOERR_VNODE) ため使えない。
+public final class ViewerDatabase: @unchecked Sendable {
     public static let schemaVersion = 7
 
     public let dataDir: String
     public let dbPath: String
     public let isReadOnly: Bool
 
-    private let pool: DatabasePool?
-    private let roQueue: DatabaseQueue?
+    /// 書込モード: 永続書込接続 (writeQueue 上でのみ触る)
+    private let writeConnection: SQLiteConnection?
+    private let writeQueue = DispatchQueue(label: "subako.db.write")
+    /// 閲覧専用モード: immutable 接続 (roQueue 上でのみ触る)
+    private let roConnection: SQLiteConnection?
+    private let roQueue = DispatchQueue(label: "subako.db.ro")
+    /// 書込モードの読み取り (短命接続をこのキューで並行実行)
+    private let readQueue = DispatchQueue(label: "subako.db.read", attributes: .concurrent)
 
     /// tweets テーブルの DDL。新規作成と v5 マイグレーション (DROP → CREATE) で共用。
     private static let tweetsDdl = """
@@ -82,14 +92,14 @@ public final class ViewerDatabase: Sendable {
         self.isReadOnly = readOnly
 
         if readOnly {
-            var config = Configuration()
-            config.readonly = true
             // 同期中の WAL に巻き込まれないよう immutable で開く (docs/mac-port-notes.md §3)
-            let queue = try DatabaseQueue(
-                path: "file:\(dbPath)?mode=ro&immutable=1", configuration: config)
-            self.pool = nil
-            self.roQueue = queue
-            let stored = try Self.readSchemaVersion(queue)
+            let conn = try SQLiteConnection(
+                path: "file:\(dbPath)?mode=ro&immutable=1", readOnly: true)
+            roConnection = conn
+            writeConnection = nil
+            let stored = (try? conn.scalarString(
+                "SELECT value FROM schema_meta WHERE key = 'schema_version'"))
+                .flatMap { $0 }.flatMap(Int.init) ?? 0
             if stored > Self.schemaVersion {
                 throw ViewerDatabaseError.schemaTooNew(stored: stored)
             }
@@ -99,56 +109,98 @@ public final class ViewerDatabase: Sendable {
         } else {
             try FileManager.default.createDirectory(
                 atPath: dataDir, withIntermediateDirectories: true)
-            var config = Configuration()
-            config.busyMode = .timeout(5.0)
-            config.prepareDatabase { db in
-                try db.execute(sql: "PRAGMA synchronous = NORMAL")
-            }
-            let pool = try DatabasePool(path: dbPath, configuration: config)
-            self.pool = pool
-            self.roQueue = nil
-            try Self.ensureCreated(pool)
+            let conn = try SQLiteConnection(path: dbPath, readOnly: false, create: true)
+            try Self.configure(conn, journalWal: true)
+            try Self.ensureCreated(conn)
+            writeConnection = conn
+            roConnection = nil
         }
     }
 
-    /// 読み取り接続 (両モード共通)。列は必ず名前でアクセスすること
-    /// (実 DB はマイグレーション由来で列順が異なる — SELECT * + 序数アクセス禁止)。
-    public var reader: any DatabaseReader {
-        pool ?? roQueue!
+    /// 接続設定 (docs/mac-port-notes.md §3 — Windows 版と一致させる)。
+    private static func configure(_ conn: SQLiteConnection, journalWal: Bool) throws {
+        if journalWal {
+            try conn.executeScript("PRAGMA journal_mode = WAL")
+        }
+        try conn.executeScript("PRAGMA synchronous = NORMAL")
     }
 
-    /// 書込接続。閲覧専用モードでは throw。
-    public func writer() throws -> any DatabaseWriter {
-        guard let pool else { throw ViewerDatabaseError.readOnlyMode }
-        return pool
+    // MARK: - 読み書き
+
+    /// 読み取り。列は必ず名前でアクセスすること (SELECT * + 序数アクセス禁止)。
+    public func read<T: Sendable>(
+        _ body: @escaping @Sendable (SQLiteConnection) throws -> T
+    ) async throws -> T {
+        if let roConnection {
+            return try await run(on: roQueue) { try body(roConnection) }
+        }
+        let path = dbPath
+        return try await run(on: readQueue) {
+            // 短命の読み取り接続 (Windows 版の接続プール相当)。
+            // 書込はしないが、WAL の shm 作成に参加できるよう read-write で開く
+            let conn = try SQLiteConnection(path: path, readOnly: false)
+            try Self.configure(conn, journalWal: false)
+            return try body(conn)
+        }
+    }
+
+    /// 書込 (1 トランザクションに包む)。閲覧専用モードでは throw。
+    public func write<T: Sendable>(
+        _ body: @escaping @Sendable (SQLiteConnection) throws -> T
+    ) async throws -> T {
+        guard let writeConnection else { throw ViewerDatabaseError.readOnlyMode }
+        return try await run(on: writeQueue) {
+            try writeConnection.transaction { try body(writeConnection) }
+        }
+    }
+
+    /// トランザクションに包まない書込 (journal_mode 変更等の特殊用途)。
+    public func writeWithoutTransaction<T: Sendable>(
+        _ body: @escaping @Sendable (SQLiteConnection) throws -> T
+    ) async throws -> T {
+        guard let writeConnection else { throw ViewerDatabaseError.readOnlyMode }
+        return try await run(on: writeQueue) { try body(writeConnection) }
+    }
+
+    /// 同期版の読み取り (テスト・CLI 用)。
+    public func readSync<T>(_ body: (SQLiteConnection) throws -> T) throws -> T {
+        if let roConnection {
+            return try roQueue.sync { try body(roConnection) }
+        }
+        let conn = try SQLiteConnection(path: dbPath, readOnly: false)
+        try Self.configure(conn, journalWal: false)
+        return try body(conn)
+    }
+
+    private func run<T: Sendable>(
+        on queue: DispatchQueue, _ work: @escaping @Sendable () throws -> T
+    ) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do {
+                    continuation.resume(returning: try work())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     /// 終了時に呼ぶ。WAL を本体へ畳んでクラウド同期の安全性を上げる
     /// (docs/mac-port-notes.md §3 — Windows 版は未実施の改善点)。
     public func checkpointAndClose() {
-        if let pool {
-            try? pool.writeWithoutTransaction { db in
-                try db.checkpoint(.truncate)
+        if writeConnection != nil {
+            writeQueue.sync {
+                writeConnection?.checkpointTruncate()
             }
-            try? pool.close()
-        } else {
-            try? roQueue?.close()
-        }
-    }
-
-    private static func readSchemaVersion(_ reader: any DatabaseReader) throws -> Int {
-        try reader.read { db in
-            let value = try String.fetchOne(
-                db, sql: "SELECT value FROM schema_meta WHERE key = 'schema_version'")
-            return value.flatMap(Int.init) ?? 0
         }
     }
 
     // MARK: - スキーマ作成・マイグレーション
 
-    private static func ensureCreated(_ pool: DatabasePool) throws {
-        try pool.write { db in
-            try db.execute(sql: """
+    private static func ensureCreated(_ db: SQLiteConnection) throws {
+        try db.transaction {
+            try db.executeScript("""
                 CREATE TABLE IF NOT EXISTS schema_meta (
                   key   TEXT PRIMARY KEY,
                   value TEXT NOT NULL
@@ -198,8 +250,8 @@ public final class ViewerDatabase: Sendable {
                 INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '7');
                 """)
 
-            let stored = try String.fetchOne(
-                db, sql: "SELECT value FROM schema_meta WHERE key = 'schema_version'")
+            let stored = try db.scalarString(
+                "SELECT value FROM schema_meta WHERE key = 'schema_version'")
                 .flatMap(Int.init) ?? 0
             if stored > schemaVersion {
                 throw ViewerDatabaseError.schemaTooNew(stored: stored)
@@ -220,11 +272,12 @@ public final class ViewerDatabase: Sendable {
             if stored < 4 {
                 // tags / user_tags は上の CREATE TABLE IF NOT EXISTS で作成済み。
                 // テーブル追加のみのため派生データのリセットは行わない。
-                try db.execute(sql: "UPDATE schema_meta SET value = '4' WHERE key = 'schema_version'")
+                try db.executeScript(
+                    "UPDATE schema_meta SET value = '4' WHERE key = 'schema_version'")
             }
             if stored < 5 {
                 // author 3 列の追加 + 主キーを (username, tweet_id) に変更するため作り直す。
-                try db.execute(sql: """
+                try db.executeScript("""
                     DROP TABLE tweets;
                     \(tweetsDdl)
                     DELETE FROM tweet_media;
@@ -245,8 +298,8 @@ public final class ViewerDatabase: Sendable {
 
     /// 列追加 → 派生データ (tweets/tweet_media) をリセットして次回取込で
     /// 新列を埋める、の定型マイグレーション。
-    private static func migrate(_ db: Database, to version: Int, alterSql: String) throws {
-        try db.execute(sql: alterSql + """
+    private static func migrate(_ db: SQLiteConnection, to version: Int, alterSql: String) throws {
+        try db.executeScript(alterSql + """
             DELETE FROM tweet_media;
             DELETE FROM tweets;
             UPDATE users SET jsonl_offset = 0;

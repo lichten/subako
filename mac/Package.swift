@@ -14,12 +14,17 @@ let package = Package(
         .executable(name: "subako-smoke", targets: ["subako-smoke"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        // macOS 標準の SQLite は「開いているファイルへのハードリンク作成」を API 違反として
+        // 接続を無効化するガードを持ち、Google Drive の同期 (アップロード用ハードリンク) と
+        // 衝突する。Windows 版 (SQLitePCLRaw) と同様に自前の SQLite を同梱して回避する。
+        .package(url: "https://github.com/swiftlang/swift-toolchain-sqlite.git", from: "1.0.0"),
     ],
     targets: [
         .target(
             name: "SubakoCore",
-            dependencies: [.product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: [
+                .product(name: "SwiftToolchainCSQLite", package: "swift-toolchain-sqlite"),
+            ]
         ),
         .executableTarget(
             name: "SubakoApp",

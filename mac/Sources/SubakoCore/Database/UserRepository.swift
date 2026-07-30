@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 
 /// users テーブルの 1 行 + 集計 (件数・未読数)。
 public struct UserRow: Sendable, Equatable {
@@ -32,7 +31,7 @@ public final class UserRepository: Sendable {
     }
 
     private func query(includeSearches: Bool) async throws -> [UserRow] {
-        try await db.reader.read { db in
+        try await db.read { conn in
             let cond = includeSearches ? "LIKE" : "NOT LIKE"
             let sql = """
                 SELECT u.username, u.display_name, u.icon_url, u.added_at, u.last_import_at, u.jsonl_offset,
@@ -44,31 +43,28 @@ public final class UserRepository: Sendable {
                 WHERE u.username \(cond) 'searches/%'
                 ORDER BY u.username COLLATE NOCASE
                 """
-            var rows: [UserRow] = []
-            let cursor = try Row.fetchCursor(db, sql: sql)
-            while let row = try cursor.next() {
-                rows.append(UserRow(
-                    username: row["username"],
-                    displayName: row["display_name"],
-                    iconUrl: row["icon_url"],
-                    addedAt: row["added_at"],
-                    lastImportAt: row["last_import_at"],
-                    jsonlOffset: row["jsonl_offset"],
-                    tweetCount: row["tweet_count"],
-                    unreadCount: row["unread_count"]))
+            return try conn.query(sql).map { row in
+                UserRow(
+                    username: row.string("username") ?? "",
+                    displayName: row.string("display_name"),
+                    iconUrl: row.string("icon_url"),
+                    addedAt: row.string("added_at") ?? "",
+                    lastImportAt: row.string("last_import_at"),
+                    jsonlOffset: row.int64("jsonl_offset") ?? 0,
+                    tweetCount: row.int64("tweet_count") ?? 0,
+                    unreadCount: row.int64("unread_count") ?? 0)
             }
-            return rows
         }
     }
 
     /// ユーザー登録 + data/<username>/ の作成。既存なら何もしない。
     @discardableResult
     public func add(_ username: String) async throws -> Bool {
-        let added = try await db.writer().write { db in
-            try db.execute(
-                sql: "INSERT OR IGNORE INTO users (username, added_at) VALUES (?, ?)",
-                arguments: [username, DateParsers.utcNow()])
-            return db.changesCount > 0
+        let added = try await db.write { conn in
+            try conn.execute(
+                "INSERT OR IGNORE INTO users (username, added_at) VALUES (?, ?)",
+                [username, DateParsers.utcNow()])
+            return conn.changesCount > 0
         }
         try FileManager.default.createDirectory(
             atPath: db.userDir(username), withIntermediateDirectories: true)
@@ -83,13 +79,13 @@ public final class UserRepository: Sendable {
     public func addMany(_ users: [(username: String, displayName: String?)]) async throws -> [String] {
         guard !users.isEmpty else { return [] }
         let now = DateParsers.utcNow()
-        return try await db.writer().write { db in
+        return try await db.write { conn in
             var added: [String] = []
             for user in users {
-                try db.execute(
-                    sql: "INSERT OR IGNORE INTO users (username, display_name, added_at) VALUES (?, ?, ?)",
-                    arguments: [user.username, user.displayName, now])
-                if db.changesCount > 0 {
+                try conn.execute(
+                    "INSERT OR IGNORE INTO users (username, display_name, added_at) VALUES (?, ?, ?)",
+                    [user.username, user.displayName, now])
+                if conn.changesCount > 0 {
                     added.append(user.username)
                 }
             }
@@ -131,17 +127,14 @@ public final class UserRepository: Sendable {
     /// ユーザーまたは検索バケットを DB (tweets / tweet_media / user_tags / users) から削除する。
     /// read_state は tweet_id 単位で全アーカイブ共通のため消さない (孤児行は無害)。
     public func deleteArchive(_ username: String) async throws {
-        try await db.writer().write { db in
+        try await db.write { conn in
             // tweet_media は tweet_id 単位で全バケット共有のため、
             // 行削除後にどこからも参照されなくなったものだけ消す
-            try db.execute(
-                sql: """
-                    DELETE FROM tweets WHERE username = :u;
-                    DELETE FROM tweet_media WHERE tweet_id NOT IN (SELECT tweet_id FROM tweets);
-                    DELETE FROM user_tags WHERE username = :u;
-                    DELETE FROM users WHERE username = :u;
-                    """,
-                arguments: ["u": username])
+            try conn.execute("DELETE FROM tweets WHERE username = ?", [username])
+            try conn.execute(
+                "DELETE FROM tweet_media WHERE tweet_id NOT IN (SELECT tweet_id FROM tweets)")
+            try conn.execute("DELETE FROM user_tags WHERE username = ?", [username])
+            try conn.execute("DELETE FROM users WHERE username = ?", [username])
         }
     }
 }
