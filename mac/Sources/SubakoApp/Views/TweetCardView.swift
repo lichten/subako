@@ -210,8 +210,8 @@ struct ThumbImageView: View {
             // 拡大時はデコード画素も増やす (§5.3、上限 2048px)
             let decodeWidth = min(maxWidth * 2, 2048)
             image = await Task.detached(priority: .utility) {
-                Self.decode(path: p, maxPixel: decodeWidth)
-            }.value
+                ImageBox(Self.decode(path: p, maxPixel: decodeWidth))
+            }.value.image
         }
     }
 

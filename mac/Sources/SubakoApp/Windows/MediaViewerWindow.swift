@@ -85,8 +85,8 @@ struct MediaViewerView: View {
             let path = entry.localPath
             // 原寸デコード (§6.2)
             image = await Task.detached(priority: .userInitiated) {
-                NSImage(contentsOfFile: path)
-            }.value
+                ImageBox(NSImage(contentsOfFile: path))
+            }.value.image
         }
         .onKeyPress(.leftArrow) {
             if state.index > 0 { state.index -= 1 }

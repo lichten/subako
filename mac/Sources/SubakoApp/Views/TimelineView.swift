@@ -173,8 +173,8 @@ struct MediaGridView: View {
                 let path = item.localPath
                 let pixel = side * 2
                 image = await Task.detached(priority: .utility) {
-                    ThumbImageView.decode(path: path, maxPixel: pixel)
-                }.value
+                    ImageBox(ThumbImageView.decode(path: path, maxPixel: pixel))
+                }.value.image
             }
         }
     }

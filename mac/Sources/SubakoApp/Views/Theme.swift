@@ -10,6 +10,13 @@ enum Theme {
     static let auxTextLight = Color(red: 0x88 / 255, green: 0x88 / 255, blue: 0x88 / 255)
 }
 
+/// バックグラウンドでデコードした NSImage を actor 間で受け渡すための箱。
+/// デコード後に変更しないため安全 (古い SDK では NSImage が Sendable 扱いされない)。
+struct ImageBox: @unchecked Sendable {
+    let image: NSImage?
+    init(_ image: NSImage?) { self.image = image }
+}
+
 /// アイコンキャッシュ経由の丸型アイコン画像。
 struct CachedIconView: View {
     let url: String?
