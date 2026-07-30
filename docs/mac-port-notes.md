@@ -80,7 +80,49 @@ Windows 版と同じデータを読む Mac 版ビューアを実装するため�
   画像倍率は Windows 版では意図的に保存していない。Mac 版で保存するのは自由だが、
   データフォルダ側の仕様には影響しない(設定はマシンローカルのため)。
 
-## 6. スコープの参考
+## 6. Mac 側での開発の始め方
+
+1. **リポジトリを clone**: `git clone https://github.com/lichten/subako.git`(private)。
+   Mac 版のコードは同一リポジトリ内に置く(例: `mac/` ディレクトリ)。CI
+   (`.github/workflows/ci.yml`) は Windows ランナーなので、Mac 版のビルドを CI に
+   載せる場合は macOS ランナーのジョブを追加する。
+2. **データを用意**: 実データは Google Drive 共有フォルダにある。Mac の Google Drive
+   クライアントで同期し、そのフォルダをデータフォルダとして使う。
+   閲覧開発だけなら **Python も API キーも不要**(§1)。
+   - 開発初期は **Windows 側のビューアを閉じた状態で、読み取り専用**
+     (`mode=ro&immutable=1`)で開くのが安全(§3)。書込(既読・タグ)の実装は
+     動作が安定してから。
+   - 実データを使わない試験には、fetcher の JSONL を数行コピーした小さな `data/` を
+     手元に作ればよい(`viewer.db` は無ければ自分で作る側なので不要)。
+3. **データが読めることを確認**(アプリを書き始める前の疎通確認):
+   ```sh
+   sqlite3 "file:<データフォルダ>/viewer.db?mode=ro&immutable=1" \
+     "SELECT value FROM schema_meta WHERE key='schema_version';
+      SELECT username, COUNT(*) FROM tweets GROUP BY username;"
+   head -1 "<データフォルダ>/<username>/tweets.jsonl" | python3 -m json.tool
+   ```
+   schema_version が 7(またはこの文書群が対応する版)であること、JSONL が
+   data-layer.md §2 の形で読めることを確認する。
+4. **実装順の目安**: §1 の読み順で仕様を把握 →
+   ①共有契約のうち読み取りに必要なもの(JSONL パーサ・画像パス解決)+ §2 の表の
+   テスト移植 → ②SQLite 読み取り(タイムラインの keyset ページング)→
+   ③UI(タイムライン → メディア → フィルタ)→ ④書込(既読・タグ)→
+   ⑤取得機能(fetcher-cli.md。Python fetcher は macOS でそのまま動く)。
+5. **Windows 側のテストは Mac では実行できない**点に注意:
+   `viewer/TweetViewer.Tests` は `net10.0-windows` + WPF 依存のため macOS では
+   ビルドできない。**実行可能な仕様書としてコードを読む**用途に使い、期待値
+   (特に `SearchSlugTests.cs` の Python 実出力コメント)を新実装のテストへ移植する。
+   Python 側の `pytest` は Mac でも動く(API キー・ネットワーク不要)。
+6. **fetcher を動かす場合**(任意):
+   ```sh
+   python3 -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
+   cp .env.example .env   # SORSA_API_KEY を記入
+   python main.py <username> --output-dir "<データフォルダ>" --max-requests 5  # 小さく試す
+   ```
+   `--output-dir` を必ず共有データフォルダに合わせること(fetcher-cli.md §2)。
+
+## 7. スコープの参考
 
 Windows 版に無い機能(viewer-features.md §12)のうち、Mac 版での差別化候補として
 記録されているもの: **ローカル全文検索**(アーカイブ済みツイートの検索。現状の「検索」は
