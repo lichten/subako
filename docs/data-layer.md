@@ -10,6 +10,7 @@ Windows 版ビューア(`viewer/TweetViewer`)・Python fetcher・将来の Mac /
 data/
 ├── viewer.db                 # SQLite (このドキュメントの §4)
 ├── icons/                    # ユーザーアイコンキャッシュ (§3.5)
+├── thumbnails/               # 動画サムネイルキャッシュ (§3.6)
 ├── <username>/               # X のスクリーン名 (@ なし)
 │   ├── tweets.jsonl          # 生ツイートアーカイブ (正データ、§2)
 │   ├── state.json            # fetcher 私有 (§6)
@@ -130,19 +131,27 @@ data/
   `id`, `created_at`, `full_text`, `user{username, display_name, ...}`,
   `retweeted_status`(RT 時は元ツイートの完全なオブジェクト、それ以外 null),
   `quoted_status`(引用時、同上), `is_quote_status`, `is_reply`,
-  `in_reply_to_tweet_id`, `in_reply_to_username`, `lang`,
+  `in_reply_to_tweet_id`, `in_reply_to_username`, `conversation_id_str`, `lang`,
   `reply_count`, `retweet_count`, `likes_count`, `view_count`,
+  `bookmark_count`, `quote_count`, `is_replies_limited`, `made_with_ai`, `paid_partnership`,
   `entities`(**配列**: `[{"type":"photo","link":..., "preview":...}]`)。
+  いいね数のキーは **`likes_count`** であって `like_count` ではない
+  (DB 列名 `like_count` と異なる点に注意)。
 - **API 実挙動の注意**: 入れ子の `quoted_status.entities` / `retweeted_status.entities` は
   **常に空配列**で返る(全アーカイブ 40,046 ツイートで非空の行が 0 件)。
   一方 `full_text` 内の t.co は展開済みの `https://pbs.twimg.com/media/...` になるため、
   引用先・RT元の画像はそこからしか得られない(§3 のフォールバック規則)。
   ただし本文に載るのは**複数画像でも 1 枚目だけ**。
 - 種別判定(排他、この優先順): `retweeted_status` 非 null → **RT** /
-  `is_reply` true または `in_reply_to_tweet_id` 非 null → **Reply** /
+  `is_reply` true または `in_reply_to_tweet_id` が **JSON 文字列** → **Reply**
+  (実データは null か文字列。数値だった場合は Reply 扱いしない — C# 実装
+  `TweetJsonParser` に合わせた規則) /
   `is_quote_status` true または `quoted_status` 非 null → **Quote** / それ以外 → **Tweet**。
 - 時系列ソートは `created_at` 由来の epoch 秒で行うこと(2010年以前の
   非 snowflake ID が存在するため **ID 順ソートは不可**)。同時刻は ID 数値降順。
+  ID の数値化(`id_int`)に失敗した場合(非数値 ID / Int64 超過)は **0** とする
+  — 同一 `sort_key` 内でタイブレークの最後に来るだけで実害はないが、
+  全実装で同じ値に落とすこと。
 
 ## 3. 画像の命名規則
 
@@ -236,7 +245,7 @@ DELETE しても既読状態は残る。孤児行(対応ツイートが無い re
 他アーカイブの既読状態まで失われる**。削除で消すのは
 `users` / `tweets` / `user_tags` と、孤児になった `tweet_media` のみ。
 
-### 4.2 DDL(schema_version = 5)
+### 4.2 DDL(schema_version = 7)
 
 ```sql
 CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -307,6 +316,10 @@ CREATE TABLE user_tags (
 CREATE INDEX ix_user_tags_tag ON user_tags(tag_id);
 ```
 
+- **列順に依存しないこと**: 上記はマイグレーションを経ずに新規作成した場合の DDL。
+  旧バージョンから `ALTER TABLE ... ADD COLUMN` で更新された実 DB では列順が異なる
+  (実例: `users.icon_url` は新規 DDL では 3 番目だが、v1 から更新した DB では末尾)。
+  読み手は `SELECT *` や序数アクセスを使わず、必ず列名指定で読むこと。
 - `raw_offset` / `raw_length` により、詳細表示は生 JSONL から該当行を
   シーク読みできる(DB に生 JSON は保存しない)。
 - 未読 = `tweets LEFT JOIN read_state` で `read_state.tweet_id IS NULL`。
@@ -324,6 +337,12 @@ CREATE INDEX ix_user_tags_tag ON user_tags(tag_id);
   v4 → v5 の差分: `tweets` に author 3列追加 + 主キーを `(username, tweet_id)` に
   変更(PK 変更のため `tweets` は DROP → CREATE)。派生リセット + `jsonl_offset = 0`。
   正データ保全は従来どおり。
+  v5 → v6 の差分: DDL 変更なし。パーサ変更(引用先・RT元の本文由来画像の抽出)を
+  反映するための派生リセット + `jsonl_offset = 0` のみ。
+  v6 → v7 の差分: DDL 変更なし。パーサ変更(RT のカウントを RT元から拾う
+  フォールバック)を反映するための派生リセット + `jsonl_offset = 0` のみ。
+  このように**パーサ規則の変更だけでもバージョンを上げ、派生を作り直す**
+  (異なる規則で取り込んだ行が混在しないようにするため)。
 - **検索バケットの users 行**: `username = "searches/<slug>"`。ビューアの
   ユーザー一覧からは `username NOT LIKE 'searches/%'` で除外し「検索」
   セクションに表示する。バケット行の `display_name` / `icon_url` は更新しない

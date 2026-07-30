@@ -107,6 +107,13 @@ python main.py --search "<query>"         # キーワード検索
 
 ## 開発者向け
 
+### ドキュメント
+
+- [docs/data-layer.md](docs/data-layer.md) — データ層仕様 (プラットフォームフリー。JSONL・SQLite・画像命名)
+- [docs/viewer-features.md](docs/viewer-features.md) — ビューア機能仕様 (全機能の挙動)
+- [docs/fetcher-cli.md](docs/fetcher-cli.md) — fetcher CLI 契約と Sorsa API 概要
+- [docs/mac-port-notes.md](docs/mac-port-notes.md) — 別プラットフォーム (Mac 等) 実装時の要点
+
 ### セットアップ
 
 ```powershell

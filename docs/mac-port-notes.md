@@ -1,0 +1,89 @@
+# Mac 版実装ノート
+
+Windows 版と同じデータを読む Mac 版ビューアを実装するための、文書横断の要点集。
+
+## 1. 読み順
+
+1. [data-layer.md](data-layer.md) — ディレクトリ構成・JSONL・SQLite・取込契約(最重要)
+2. [viewer-features.md](viewer-features.md) — 再現すべき機能と挙動の網羅
+3. [fetcher-cli.md](fetcher-cli.md) — 取得機能を持たせる場合の CLI 契約
+
+最小スコープは**閲覧のみ**(Python も API キーも不要 — viewer-features.md §1.3)。
+取得機能は Python fetcher が macOS でそのまま動くため、後付けで CLI 契約に従えばよい。
+
+## 2. 必ず揃える共有契約
+
+複数実装(C# / Python / 新実装)で**規則が一致していないとデータが壊れる・読めなくなる**もの。
+新実装ではこの表の単位でテストを移植すること。
+
+| # | 契約 | 参照 | Windows 実装 | Python 実装 | 検証に使えるテスト |
+|---|---|---|---|---|---|
+| 1 | ツイート ID 抽出順 (`id_str`→`id`→`tweet_id`) | data-layer.md §2 | `Data/TweetJsonParser.cs` | `sorsa_fetcher/storage.py` | `TweetJsonParserTests.cs` |
+| 2 | `created_at` 4 形式 + ISO フォールバック | §2 | 同上 | `sorsa_fetcher/fetcher.py` | 同上 |
+| 3 | 画像の列挙順・URL 重複除去・`idx` 連番 | §3 | `TweetJsonParser.ExtractMedia` | `media.extract_photo_urls` | `TweetJsonParserTests.cs`, `QuotedImageTests.cs` |
+| 4 | full_text からの画像 URL 抽出正規表現 | §3 | `TweetJsonParser.MediaUrlsFromText` | `media._media_urls_from_text` | `TweetJsonParserTests.cs` |
+| 5 | 拡張子決定規則 | §3 | `TweetJsonParser.ExtOf` | `media.to_original_size` | 同上 |
+| 6 | 検索 slug 生成 | §1.5 | `Data/SearchSlug.cs` | `fetcher.slugify_query` | `SearchSlugTests.cs`(**Python 実出力を期待値としてコメント付きで固定済み** — 新実装の検証にそのまま流用可) |
+| 7 | アイコン/サムネイルキャッシュのファイル名 `<sha1(url) 小文字hex>.<ext>` | §3.5 | `Services/IconCache.cs` | (ビューア専用) | 専用テストなし — 新実装は実データの `data/icons/` の既存ファイル名と突き合わせて検証 |
+| 8 | JSONL 取込(完結行のみ + `jsonl_offset`、バッチと同一トランザクション) | §5 | `Data/JsonlImporter.cs` | (書き手は append-only のみ) | `JsonlImporterTests.cs` |
+
+`viewer/TweetViewer.Tests/` のテストは仕様の実行可能な裏付けになっている。特に
+`TweetJsonParserTests.cs` と `JsonlImporterTests.cs` は data-layer.md の条項とほぼ 1:1。
+ほかに `MergedTimelineTests.cs`(統合表示の重複排除とページング)、
+`AscendingOrderTests.cs` / `DateRangeQueryTests.cs`(並び順・期間フィルタの SQL 規則)、
+`SchemaMigrationTests.cs`(v1 の DDL 実物とマイグレーション)が移植元として有用。
+
+## 3. SQLite・並行性
+
+- `viewer.db` は**共有データフォルダ内**にある。接続設定を Windows 版に合わせること:
+  `journal_mode=WAL` / `busy_timeout=5000` / `synchronous=NORMAL`。
+- 書き手はプロセス内で直列化(Windows 版は単一の書込ロック)。プロセス間・マシン間の
+  排他は SQLite 任せなので、**同時に書くのは常に 1 台**(data-layer.md §6)。
+- クラウド同期(Google Drive 等)はファイル単位・任意タイミングで同期するため、
+  `viewer.db` / `-wal` / `-shm` の組が不整合な瞬間があり得る。**Mac / Windows の同時起動は
+  不可**と考えること。終了時に `PRAGMA wal_checkpoint(TRUNCATE)` を明示すると
+  同期の安全性が上がる(Windows 版は未実施)。
+- `read_state`(既読)は tweet_id 単位のグローバル共有なので、片方の PC で読んだ結果は
+  そのまま他方に反映されるのが設計意図。ただし同期の衝突はファイル丸ごと
+  「最後に同期した方が勝つ」ため、両方で書いていると既読ロストが起きうる。
+  Mac 版に**閲覧専用モード(read_state を書かない)**を用意する価値がある。
+- 読み取り専用で開くなら SQLite の `mode=ro&immutable=1` 相当が安全
+  (同期中の WAL に巻き込まれない)。
+- **列名指定で読むこと**: 実 DB はマイグレーション由来で列順が新規 DB と異なる
+  (data-layer.md §4.2 の注記)。`SELECT *` + 序数アクセスは禁止。
+- schema_version が自分の対応バージョンより新しい DB は開かずエラーにする。
+
+## 4. パス・ファイル名
+
+- ユーザー名の検証は**英数字と `_` のみ**(viewer-features.md §9.2)。これがフォルダ名の
+  安全性を担保している。新実装は ASCII 限定 `^[A-Za-z0-9_]+$`(Python 側の規則)に
+  揃えること — Windows 版の判定は Unicode の文字・数字も通す実装差がある
+  (§9.2 の注意を参照)。
+- 検索バケットの ID `searches/<slug>` は**パス区切りを含む文字列**としてコード中を流れる
+  (`users.username` にもこのまま入る)。macOS では `/` がネイティブの区切りなので
+  そのまま結合できる。ID として比較するときは `searches/` プレフィクスで判定。
+- 画像の実ファイルは拡張子が期待とずれていることがある。`jpg, png, webp, gif, jpeg` の順の
+  探索フォールバックを実装すること(viewer-features.md §11.2)。
+- 設定・ログはデータフォルダに入れない(マシンローカル)。Mac なら
+  `~/Library/Application Support/Subako/` と `~/Library/Logs/Subako/` 等が相当。
+
+## 5. Windows 版の既知の課題(新実装では最初から回避)
+
+- **画像ビューアの「ブラウザで開く」**: アーカイブ名から無条件に
+  `https://x.com/<name>/status/<id>` を組むため、検索バケット由来では壊れた URL になる。
+  タイムライン側の規則(author 不明なら `https://x.com/i/web/status/<id>`)に統一すること
+  (viewer-features.md §6.2)。
+- **固定サイズダイアログ**: Windows 版はダイアログ 8 個が固定サイズで、文言変更・翻訳で
+  レイアウトが破綻する設計負債が記録されている(release-plan.md 付録 B)。
+  最初から内容依存サイズにする。
+- **非永続の状態**(viewer-features.md §2.2): 表示モード・統合タイムライン・期間フィルタ・
+  画像倍率は Windows 版では意図的に保存していない。Mac 版で保存するのは自由だが、
+  データフォルダ側の仕様には影響しない(設定はマシンローカルのため)。
+
+## 6. スコープの参考
+
+Windows 版に無い機能(viewer-features.md §12)のうち、Mac 版での差別化候補として
+記録されているもの: **ローカル全文検索**(アーカイブ済みツイートの検索。現状の「検索」は
+X 全体への API 検索の保存)。そのほかスレッド表示・動画再生・ツイート単位タグなどは
+意図的に未実装。追加する場合も**共有データ(data-layer.md)の互換を壊さないこと**
+(新テーブルを足すなら schema_version の規則に従う)。
