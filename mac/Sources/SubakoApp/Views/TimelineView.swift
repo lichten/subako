@@ -6,9 +6,9 @@ struct TimelineView: View {
     @Bindable var app: AppModel
     let onOpenImage: (TweetItem, ResolvedImage) -> Void
 
-    /// カードごとの表示フレーム (scrollView 座標系)。自動既読の判定に使う
+    /// カードごとの表示フレーム (scrollView 座標系 = ビューポート相対)。自動既読の判定に使う
     @State private var cardFrames: [String: CGRect] = [:]
-    @State private var visibleRect: CGRect = .zero
+    @State private var viewportHeight: CGFloat = 0
     @State private var readTimer: Timer?
     @State private var scrollPosition = ScrollPosition()
 
@@ -23,6 +23,11 @@ struct TimelineView: View {
                         proxy.frame(in: .scrollView)
                     } action: { frame in
                         cardFrames[item.id] = frame
+                    }
+                    .onDisappear {
+                        // LazyVStack が破棄したカードの古い矩形を残さない
+                        // (残すと画面外のツイートを既読にしてしまう)
+                        cardFrames[item.id] = nil
                     }
                 }
                 if app.timelineLoading {
@@ -46,9 +51,7 @@ struct TimelineView: View {
                 contentHeight: geometry.contentSize.height,
                 viewportHeight: geometry.containerSize.height)
         } action: { _, metrics in
-            visibleRect = CGRect(
-                x: 0, y: metrics.offsetY,
-                width: 1, height: metrics.viewportHeight)
+            viewportHeight = metrics.viewportHeight
             // 末尾まで残り約 2 画面分で次ページ (リストが空の間は発火しない — §5.6)
             if !app.timelineItems.isEmpty, !app.timelineLoading, app.timelineHasMore,
                metrics.contentHeight - (metrics.offsetY + metrics.viewportHeight)
@@ -58,7 +61,9 @@ struct TimelineView: View {
             restartReadTimer()
         }
         .onChange(of: app.generation) {
-            // 表示切替でリストが入れ替わったら先頭へ (§5.7)
+            // 表示切替でリストが入れ替わったら先頭へ (§5.7)。
+            // 切替前のスナップショットで既読化が走らないようタイマーも止める
+            readTimer?.invalidate()
             cardFrames = [:]
             scrollPosition.scrollTo(edge: .top)
         }
@@ -84,29 +89,23 @@ struct TimelineView: View {
     private func restartReadTimer() {
         guard !app.isReadOnly else { return }
         readTimer?.invalidate()
-        let viewport = visibleRect
+        let height = viewportHeight
         let frames = cardFrames
         readTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
             Task { @MainActor in
-                markVisibleAsRead(viewport: viewport, frames: frames)
+                markVisibleAsRead(viewportHeight: height, frames: frames)
             }
         }
     }
 
     @MainActor
-    private func markVisibleAsRead(viewport: CGRect, frames: [String: CGRect]) {
-        guard viewport.height > 0 else { return }
-        let viewportRange = viewport.minY...(viewport.minY + viewport.height)
-        var ids: [String] = []
-        for (id, frame) in frames {
-            let fullyVisible = frame.minY >= viewportRange.lowerBound
-                && frame.maxY <= viewportRange.upperBound
-            let tallAndPassed = frame.height > viewport.height
-                && frame.maxY <= viewportRange.upperBound
-            if fullyVisible || tallAndPassed {
-                ids.append(id)
-            }
-        }
+    private func markVisibleAsRead(viewportHeight: CGFloat, frames: [String: CGRect]) {
+        // frames はビューポート相対 (scrollView 座標系)。contentOffset は混ぜない
+        let ids = ScrollReadRule.visibleIds(
+            viewportHeight: viewportHeight,
+            frames: frames.map {
+                ScrollReadRule.Frame(id: $0.key, top: $0.value.minY, height: $0.value.height)
+            })
         if !ids.isEmpty {
             app.markRead(itemIds: ids)
         }
