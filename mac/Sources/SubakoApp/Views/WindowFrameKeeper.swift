@@ -41,6 +41,11 @@ struct WindowFrameKeeper: NSViewRepresentable {
             super.viewDidMoveToWindow()
             guard let window, !restored else { return }
             restored = true
+            // SwiftUI が付けた AppKit の frame autosave を切る。
+            // 放っておくと復元機構が二重になり、こちらが画面内へ直した矩形を
+            // あとから autosave 側の値 (画面外・別ディスプレイのまま) で
+            // 上書きされることがある。どちらが勝つかはタイミング次第で不安定
+            window.setFrameAutosaveName("")
             // SwiftUI がウィンドウを配置し終えるのを待ってから上書きする
             DispatchQueue.main.async { [weak self, weak window] in
                 guard let self, let window else { return }
@@ -55,10 +60,10 @@ struct WindowFrameKeeper: NSViewRepresentable {
             let screens = NSScreen.screens.map(\.visibleFrame)
             guard let fallback = NSScreen.main?.visibleFrame ?? screens.first else { return }
             let placed = WindowPlacement.onScreen(saved, screens: screens, fallback: fallback)
-            if placed != saved {
-                AppLog.info("保存されたウィンドウ位置が画面外: \(saved) → \(placed)")
-            }
             window.setFrame(placed, display: true)
+            // 位置がおかしいという報告のときに、保存値・補正・画面構成が一度に分かるようにする
+            AppLog.info(
+                "ウィンドウ復元: 保存=\(saved) 適用=\(window.frame) 画面=\(screens)")
         }
 
         private func observe(_ window: NSWindow) {
