@@ -5,6 +5,7 @@ import PackageDescription
 // Swift 7 で必須になる予定の upcoming feature を先行 opt-in する。
 let strictSwiftSettings: [SwiftSetting] = [
     .enableUpcomingFeature("ExistentialAny"),          // SE-0335: 存在型に any を必須化
+    .enableUpcomingFeature("MemberImportVisibility"),  // SE-0444: 暗黙の再エクスポート依存を禁止
 ]
 
 // SubakoCore は UI 非依存の共有契約層 (パーサ・DB・取込・fetcher 連携)。

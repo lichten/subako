@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// 設定の永続化 (docs/viewer-features.md §2.2)。データフォルダの外 (マシンローカル) に置く。
