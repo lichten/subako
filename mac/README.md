@@ -67,10 +67,10 @@ mac-port-notes §3)。
   macOS と主要ブラウザの慣習に合わせて Space / Shift+Space (1 画面送り) と
   Command+↑ / Command+↓ (先頭・末尾) を追加し、メディアグリッドにも適用している
   (Windows はタイムラインのみ)。移動量の規則は共通。
-- ウィンドウ位置・サイズの保存は macOS (SwiftUI の WindowGroup) に任せている。
-  保存先は Windows 版の settings.json ではなく UserDefaults で、移動のたびに
-  自動保存されるため強制終了でも残る。サイドバー幅だけは settings.json に持つ
-  (詳細は docs/mac-port-notes.md §4.6)。
+- ウィンドウ位置・サイズとサイドバー幅は Windows 版と同じく settings.json に持つ
+  (§2.2)。SwiftUI の WindowGroup はサイズしか復元せず、位置は起動元アプリのある
+  画面へ移し替えてしまうため自前で復元している (docs/mac-port-notes.md §4.6)。
+  最大化 (ズーム) 状態は保存しない。
 - クラッシュ時の既読フラッシュ専用ハンドラは無し (既読キューは 1 秒周期で
   書き込むため損失は最大 1 秒分)。
 - ページ読込に失敗したとき、Windows 版は未処理例外としてダイアログを出して終了するが、

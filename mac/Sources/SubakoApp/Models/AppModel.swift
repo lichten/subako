@@ -999,9 +999,21 @@ final class AppModel {
         measuredSidebarWidth = width
     }
 
+    /// 現在のウィンドウ矩形 (§2.2)。移動・リサイズのたびに来るので、
+    /// サイドバー幅と同じく @Observable の追跡対象にしない
+    @ObservationIgnored private var currentWindowFrame: CGRect?
+
+    func noteWindowFrame(_ frame: CGRect) {
+        guard frame.width > 0, frame.height > 0 else { return }
+        currentWindowFrame = frame
+    }
+
     func shutdown() async {
         if let width = measuredSidebarWidth {
             settings.sidebarWidth = WindowPlacement.clampSidebarWidth(width)
+        }
+        if let frame = currentWindowFrame {
+            settings.windowFrame = frame
         }
         await readQueue?.shutdown()
         db?.checkpointAndClose()

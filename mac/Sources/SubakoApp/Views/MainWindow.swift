@@ -69,6 +69,10 @@ struct MainWindow: View {
             statusBar
         }
         .frame(minWidth: 800, minHeight: 500)
+        // 前回終了時のウィンドウ配置を復元する (§2.2)
+        .background(WindowFrameKeeper(saved: app.settings.windowFrame) { frame in
+            app.noteWindowFrame(frame)
+        })
         .sheet(item: $sheet) { kind in
             sheetView(kind)
         }

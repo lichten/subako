@@ -10,6 +10,11 @@ final class AppSettings {
         var pythonPath: String?
         var dataDir: String?
         var sidebarWidth: Double?
+        /// 前回終了時のウィンドウ配置 (§2.2)。Windows 版と同じ意味のキー
+        var windowLeft: Double?
+        var windowTop: Double?
+        var windowWidth: Double?
+        var windowHeight: Double?
         var unreadOnly: Bool?
         var ascending: Bool?
         var tagFilterId: Int64?
@@ -28,6 +33,8 @@ final class AppSettings {
     var pythonPath: String = ""
     var dataDir: String = ""
     var sidebarWidth: Double = 260
+    /// 前回終了時のウィンドウ矩形 (画面座標)。nil = 未保存で macOS 任せ
+    var windowFrame: CGRect?
     var unreadOnly: Bool = false
     var ascending: Bool = false
     /// nil = すべて、-1 = (タグなし)、その他 = tag_id
@@ -60,6 +67,11 @@ final class AppSettings {
         settings.pythonPath = stored.pythonPath ?? ""
         settings.dataDir = stored.dataDir ?? ""
         settings.sidebarWidth = stored.sidebarWidth ?? 260
+        if let left = stored.windowLeft, let top = stored.windowTop,
+           let width = stored.windowWidth, let height = stored.windowHeight,
+           width > 0, height > 0 {
+            settings.windowFrame = CGRect(x: left, y: top, width: width, height: height)
+        }
         settings.unreadOnly = stored.unreadOnly ?? false
         settings.ascending = stored.ascending ?? false
         settings.hasTagFilter = stored.hasTagFilter ?? false
@@ -77,6 +89,10 @@ final class AppSettings {
             pythonPath: pythonPath.isEmpty ? nil : pythonPath,
             dataDir: dataDir.isEmpty ? nil : dataDir,
             sidebarWidth: sidebarWidth,
+            windowLeft: windowFrame.map { Double($0.origin.x) },
+            windowTop: windowFrame.map { Double($0.origin.y) },
+            windowWidth: windowFrame.map { Double($0.width) },
+            windowHeight: windowFrame.map { Double($0.height) },
             unreadOnly: unreadOnly,
             ascending: ascending,
             tagFilterId: tagFilterId,
