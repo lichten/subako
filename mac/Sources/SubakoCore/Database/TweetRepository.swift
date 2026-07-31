@@ -119,7 +119,7 @@ public final class TweetRepository: Sendable {
                   ORDER BY sort_key \(dir), id_int \(dir)
                   LIMIT ?
                   """
-            var args: [SQLiteBindable?] = usernames
+            var args: [(any SQLiteBindable)?] = usernames
             args.append(unreadOnly ? 1 : 0)
             args.append(range == nil ? 1 : 0)
             args.append(range?.fromEpoch ?? 0)
@@ -180,7 +180,7 @@ public final class TweetRepository: Sendable {
         var all: [String: [String]] = [:]
         for row in try conn.query(
             "SELECT tweet_id, username FROM tweets WHERE tweet_id IN (\(placeholders)) ORDER BY tweet_id",
-            tweetIds.map { $0 as SQLiteBindable? })
+            tweetIds.map { $0 as (any SQLiteBindable)? })
         {
             if let tweetId = row.string("tweet_id"), let username = row.string("username") {
                 all[tweetId, default: []].append(username)
@@ -197,7 +197,7 @@ public final class TweetRepository: Sendable {
         var result: [String: [TweetMediaRow]] = [:]
         for row in try conn.query(
             "SELECT tweet_id, idx, source_url, ext, origin FROM tweet_media WHERE tweet_id IN (\(placeholders)) ORDER BY tweet_id, idx",
-            tweetIds.map { $0 as SQLiteBindable? })
+            tweetIds.map { $0 as (any SQLiteBindable)? })
         {
             let media = TweetMediaRow(
                 tweetId: row.string("tweet_id") ?? "",
@@ -262,7 +262,7 @@ public final class TweetRepository: Sendable {
                   ORDER BY sort_key \(dir), id_int \(dir), idx ASC
                   LIMIT ?
                   """
-            var args: [SQLiteBindable?] = usernames
+            var args: [(any SQLiteBindable)?] = usernames
             args.append(range == nil ? 1 : 0)
             args.append(range?.fromEpoch ?? 0)
             args.append(range?.toEpochExclusive ?? 0)
@@ -298,7 +298,7 @@ public final class TweetRepository: Sendable {
             let placeholders = usernames.map { _ in "?" }.joined(separator: ",")
             guard let row = try conn.queryOne(
                 "SELECT MIN(sort_key) AS mn, MAX(sort_key) AS mx FROM tweets WHERE username IN (\(placeholders))",
-                usernames.map { $0 as SQLiteBindable? }),
+                usernames.map { $0 as (any SQLiteBindable)? }),
                 let mn = row.int64("mn"), let mx = row.int64("mx")
             else { return nil }
             return (mn, mx)

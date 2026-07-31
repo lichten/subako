@@ -191,7 +191,7 @@ final class AppModel {
             selectFirstVisible()
             AppLog.info("起動完了 dataDir=\(dataDir) readOnly=\(db.isReadOnly)")
         } catch {
-            openError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+            openError = (error as? (any LocalizedError))?.errorDescription ?? "\(error)"
             AppLog.error("DB オープン失敗: \(error)")
         }
     }
@@ -573,7 +573,7 @@ final class AppModel {
 
     /// SQLiteError の description は SQL 文まで含むので、表示は sqlite のメッセージだけにする
     /// (完全な内容はログに残る)
-    private static func userMessage(for error: Error) -> String {
+    private static func userMessage(for error: any Error) -> String {
         (error as? SQLiteError)?.message ?? error.localizedDescription
     }
 

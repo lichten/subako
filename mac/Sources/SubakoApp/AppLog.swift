@@ -3,7 +3,7 @@ import Foundation
 /// 日次ファイルログ (docs/viewer-features.md §11.4)。
 /// ~/Library/Logs/Subako/yyyyMMdd.log、直近 7 個を保持。マシンローカル。
 enum AppLog {
-    nonisolated(unsafe) private static let queue = DispatchQueue(label: "subako.applog")
+    private static let queue = DispatchQueue(label: "subako.applog")
 
     private static let logsDir = FileManager.default.urls(
         for: .libraryDirectory, in: .userDomainMask)[0]

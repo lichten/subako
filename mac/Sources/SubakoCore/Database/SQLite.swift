@@ -143,7 +143,7 @@ public final class SQLiteConnection: @unchecked Sendable {
     }
 
     /// 単一ステートメントの実行 (位置引数 `?`)。
-    public func execute(_ sql: String, _ arguments: [SQLiteBindable?] = []) throws {
+    public func execute(_ sql: String, _ arguments: [(any SQLiteBindable)?] = []) throws {
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
         try bind(statement, positional: arguments, sql: sql)
@@ -151,7 +151,7 @@ public final class SQLiteConnection: @unchecked Sendable {
     }
 
     /// 単一ステートメントの実行 (名前付き引数 `:name`)。
-    public func execute(_ sql: String, named arguments: [String: SQLiteBindable?]) throws {
+    public func execute(_ sql: String, named arguments: [String: (any SQLiteBindable)?]) throws {
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
         try bind(statement, named: arguments, sql: sql)
@@ -159,7 +159,7 @@ public final class SQLiteConnection: @unchecked Sendable {
     }
 
     /// クエリ (位置引数)。全行を配列で返す。
-    public func query(_ sql: String, _ arguments: [SQLiteBindable?] = []) throws -> [SQLiteRow] {
+    public func query(_ sql: String, _ arguments: [(any SQLiteBindable)?] = []) throws -> [SQLiteRow] {
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
         try bind(statement, positional: arguments, sql: sql)
@@ -177,12 +177,12 @@ public final class SQLiteConnection: @unchecked Sendable {
         return rows
     }
 
-    public func queryOne(_ sql: String, _ arguments: [SQLiteBindable?] = []) throws -> SQLiteRow? {
+    public func queryOne(_ sql: String, _ arguments: [(any SQLiteBindable)?] = []) throws -> SQLiteRow? {
         try query(sql, arguments).first
     }
 
     /// 先頭行・先頭列の文字列 (スカラ取得)。行なし・NULL は nil。
-    public func scalarString(_ sql: String, _ arguments: [SQLiteBindable?] = []) throws -> String? {
+    public func scalarString(_ sql: String, _ arguments: [(any SQLiteBindable)?] = []) throws -> String? {
         try scalar(sql, arguments) { statement in
             sqlite3_column_type(statement, 0) == SQLITE_NULL
                 ? nil : String(cString: sqlite3_column_text(statement, 0))
@@ -190,7 +190,7 @@ public final class SQLiteConnection: @unchecked Sendable {
     }
 
     /// 先頭行・先頭列の整数 (スカラ取得)。行なし・NULL は nil。
-    public func scalarInt64(_ sql: String, _ arguments: [SQLiteBindable?] = []) throws -> Int64? {
+    public func scalarInt64(_ sql: String, _ arguments: [(any SQLiteBindable)?] = []) throws -> Int64? {
         try scalar(sql, arguments) { statement in
             sqlite3_column_type(statement, 0) == SQLITE_NULL
                 ? nil : sqlite3_column_int64(statement, 0)
@@ -198,7 +198,7 @@ public final class SQLiteConnection: @unchecked Sendable {
     }
 
     private func scalar<T>(
-        _ sql: String, _ arguments: [SQLiteBindable?],
+        _ sql: String, _ arguments: [(any SQLiteBindable)?],
         _ read: (OpaquePointer) -> T?
     ) throws -> T? {
         let statement = try prepare(sql)
@@ -250,7 +250,7 @@ public final class SQLiteConnection: @unchecked Sendable {
     }
 
     private func bind(
-        _ statement: OpaquePointer, positional arguments: [SQLiteBindable?], sql: String
+        _ statement: OpaquePointer, positional arguments: [(any SQLiteBindable)?], sql: String
     ) throws {
         for (offset, value) in arguments.enumerated() {
             try bindValue(statement, index: Int32(offset + 1), value: value, sql: sql)
@@ -258,7 +258,7 @@ public final class SQLiteConnection: @unchecked Sendable {
     }
 
     private func bind(
-        _ statement: OpaquePointer, named arguments: [String: SQLiteBindable?], sql: String
+        _ statement: OpaquePointer, named arguments: [String: (any SQLiteBindable)?], sql: String
     ) throws {
         for (name, value) in arguments {
             let index = sqlite3_bind_parameter_index(statement, ":" + name)
@@ -270,7 +270,7 @@ public final class SQLiteConnection: @unchecked Sendable {
     }
 
     private func bindValue(
-        _ statement: OpaquePointer, index: Int32, value: SQLiteBindable?, sql: String
+        _ statement: OpaquePointer, index: Int32, value: (any SQLiteBindable)?, sql: String
     ) throws {
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         let rc: Int32

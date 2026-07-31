@@ -21,7 +21,7 @@ extension JSONValue: Decodable {
         init?(intValue: Int) { return nil }
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         if let keyed = try? decoder.container(keyedBy: StringKey.self) {
             var dict = [String: JSONValue](minimumCapacity: keyed.allKeys.count)
             for key in keyed.allKeys {
