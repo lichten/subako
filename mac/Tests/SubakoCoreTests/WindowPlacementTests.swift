@@ -45,6 +45,45 @@ import Testing
         #expect(placed != frame)
     }
 
+    // MARK: - 画面端のはみ出し (縦は macOS が直すが横は直さない)
+
+    @Test func frameHangingOffTheRightIsPulledIn() {
+        // 画面と同じ幅なのに x=300 — 右へ 300 はみ出している
+        let frame = CGRect(x: 300, y: 0, width: 1710, height: 990)
+        let placed = WindowPlacement.onScreen(frame, screens: [builtIn], fallback: builtIn)
+        #expect(placed.minX == 0)
+        #expect(placed.size == frame.size)
+    }
+
+    @Test func frameHangingOffTheLeftIsPulledIn() {
+        let frame = CGRect(x: -120, y: 0, width: 1400, height: 900)
+        let placed = WindowPlacement.onScreen(frame, screens: [builtIn], fallback: builtIn)
+        #expect(placed.minX == 0)
+        #expect(placed.size == frame.size)
+    }
+
+    @Test func frameHangingOffTheBottomIsPulledIn() {
+        let frame = CGRect(x: 100, y: -200, width: 1000, height: 700)
+        let placed = WindowPlacement.onScreen(frame, screens: [builtIn], fallback: builtIn)
+        #expect(placed.minY == 0)
+        #expect(placed.minX == 100)
+    }
+
+    @Test func frameExactlyFillingTheScreenIsUntouched() {
+        let frame = CGRect(x: 0, y: 0, width: 1710, height: 1041)
+        #expect(
+            WindowPlacement.onScreen(frame, screens: [builtIn], fallback: builtIn) == frame)
+    }
+
+    @Test func frameSpanningTwoScreensMovesToTheLargerOverlap() {
+        // 内蔵に少し、外部に大きくまたがっている → 外部の中に収める
+        let frame = CGRect(x: 1600, y: 600, width: 1200, height: 800)
+        let placed = WindowPlacement.onScreen(
+            frame, screens: [builtIn, external], fallback: builtIn)
+        #expect(external.contains(placed))
+        #expect(placed.size == frame.size)
+    }
+
     @Test func oversizedFrameIsShrunkToFit() {
         let frame = CGRect(x: 9000, y: 9000, width: 4000, height: 3000)
         let placed = WindowPlacement.onScreen(frame, screens: [builtIn], fallback: builtIn)

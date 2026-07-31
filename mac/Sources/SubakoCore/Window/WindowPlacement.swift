@@ -11,25 +11,44 @@ public enum WindowPlacement {
     /// 画面内と見なすのに必要な重なり面積の割合。角がわずかに掛かっただけでは救わない。
     static let minVisibleFraction: CGFloat = 0.2
 
-    /// `frame` が `screens` のいずれかと十分に重なっていればそのまま返す。
-    /// 重なっていなければ `fallback` の中央へ、はみ出さないサイズで収めて返す。
+    /// 保存された矩形を、実際に表示できる位置へ直して返す。
     ///
-    /// 保存先のディスプレイを外した場合に必要。macOS が自動で行う
-    /// `constrainFrameRect(_:to:)` は「上端を画面に乗せる」「高さを縮める」だけで、
-    /// **横方向 (x 座標・幅) は補正されない**。
+    /// - いずれかの画面に完全に収まっていればそのまま
+    /// - 一番重なっている画面からはみ出していれば、その画面の中へ寄せる
+    ///   (画面より大きければ縮める)
+    /// - どの画面ともほとんど重なっていなければ `fallback` の中央へ
+    ///
+    /// macOS が自動で行う `constrainFrameRect(_:to:)` は「上端を画面に乗せる」
+    /// 「高さを縮める」だけで、**横方向 (x 座標・幅) は補正されない**。
+    /// 画面端をまたいだまま終了すると、その位置が保存されて毎回はみ出して開くので、
+    /// ここで直す。画面をまたいで置いていたウィンドウは、重なりの大きい方へ寄る。
     public static func onScreen(
         _ frame: CGRect, screens: [CGRect], fallback: CGRect
     ) -> CGRect {
         guard frame.width > 0, frame.height > 0 else { return centered(frame, in: fallback) }
         let area = frame.width * frame.height
+        var best: (screen: CGRect, overlap: CGFloat)?
         for screen in screens {
-            let overlap = frame.intersection(screen)
-            guard !overlap.isNull else { continue }
-            if overlap.width * overlap.height >= area * minVisibleFraction {
-                return frame
+            let intersection = frame.intersection(screen)
+            guard !intersection.isNull else { continue }
+            let overlap = intersection.width * intersection.height
+            if overlap > (best?.overlap ?? 0) {
+                best = (screen, overlap)
             }
         }
-        return centered(frame, in: fallback)
+        guard let best, best.overlap >= area * minVisibleFraction else {
+            return centered(frame, in: fallback)
+        }
+        return fitted(frame, in: best.screen)
+    }
+
+    /// `frame` を `area` に収まるまで縮めてから、はみ出さない位置へ寄せる。
+    static func fitted(_ frame: CGRect, in area: CGRect) -> CGRect {
+        let width = min(max(frame.width, 1), area.width)
+        let height = min(max(frame.height, 1), area.height)
+        let x = min(max(frame.minX, area.minX), area.maxX - width)
+        let y = min(max(frame.minY, area.minY), area.maxY - height)
+        return CGRect(x: x, y: y, width: width, height: height)
     }
 
     /// `frame` のサイズを `area` に収まるまで縮めてから中央へ置く。
