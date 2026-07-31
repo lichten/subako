@@ -101,21 +101,33 @@ struct TweetCardView: View {
 
     // MARK: - 画像 (§5.3 折り返し配置 + 倍率メニュー)
 
+    /// 既定倍率 (設定値)。settings.json の値が既知の倍率でなければ等倍に落とす
+    private var defaultScale: ImageScale {
+        ImageScale(rawValue: app.settings.defaultImageScale) ?? .normal
+    }
+
     private func imagesFlow(_ images: [ResolvedImage]) -> some View {
         FlowLayout(spacing: 6) {
             ForEach(images) { image in
-                let scale = (imageScales[image.id] ?? .normal).rawValue
+                let effective = imageScales[image.id] ?? defaultScale
                 ThumbImageView(
                     path: image.localPath,
-                    maxWidth: image.baseWidth * scale,
-                    maxHeight: image.baseHeight * scale)
+                    maxWidth: image.baseWidth * effective.rawValue,
+                    maxHeight: image.baseHeight * effective.rawValue)
                     .onTapGesture { onOpenImage(image) }
                     .contextMenu {
                         ForEach(ImageScale.allCases) { s in
                             Toggle(s.label, isOn: Binding(
-                                get: { (imageScales[image.id] ?? .normal) == s },
+                                get: { effective == s },
                                 set: { _ in imageScales[image.id] = s }))
                         }
+                        Divider()
+                        // Mac 版独自: 既定倍率の永続化 (mac/README.md 既知差分)
+                        Button("このサイズを既定にする") {
+                            app.settings.defaultImageScale = effective.rawValue
+                            app.settings.save()
+                        }
+                        .disabled(effective == defaultScale)
                     }
             }
         }

@@ -22,6 +22,10 @@ final class AppSettings {
         var hasTagFilter: Bool?
         /// Mac 版独自: 閲覧専用モード (read_state を書かない — docs/mac-port-notes.md §3)
         var readOnlyMode: Bool?
+        /// Mac 版独自: タイムライン画像の既定表示倍率 (ImageScale.rawValue)。
+        /// Windows 版は常に等倍・非永続だが、設定はマシンローカルのため保存して良い
+        /// (docs/mac-port-notes.md「非永続の状態」)
+        var defaultImageScale: Double?
     }
 
     static let supportDir = FileManager.default.urls(
@@ -42,6 +46,8 @@ final class AppSettings {
     var tagFilterId: Int64?
     var hasTagFilter: Bool = false
     var readOnlyMode: Bool = false
+    /// タイムライン画像の既定表示倍率 (1.0 = 等倍)
+    var defaultImageScale: Double = 1.0
 
     /// DataDir が空なら RepoDir/data (Windows 版と同じ規則)。
     var effectiveDataDir: String {
@@ -78,6 +84,7 @@ final class AppSettings {
         settings.hasTagFilter = stored.hasTagFilter ?? false
         settings.tagFilterId = settings.hasTagFilter ? stored.tagFilterId : nil
         settings.readOnlyMode = stored.readOnlyMode ?? false
+        settings.defaultImageScale = stored.defaultImageScale ?? 1.0
         if settings.repoDir.isEmpty {
             settings.detectRepoDir()
         }
@@ -98,7 +105,8 @@ final class AppSettings {
             ascending: ascending,
             tagFilterId: tagFilterId,
             hasTagFilter: tagFilterId != nil,
-            readOnlyMode: readOnlyMode)
+            readOnlyMode: readOnlyMode,
+            defaultImageScale: defaultImageScale)
         do {
             try FileManager.default.createDirectory(
                 atPath: Self.supportDir, withIntermediateDirectories: true)
