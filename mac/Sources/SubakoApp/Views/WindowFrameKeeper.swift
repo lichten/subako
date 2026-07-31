@@ -27,6 +27,11 @@ struct WindowFrameKeeper: NSViewRepresentable {
         private let saved: CGRect?
         private let onChange: (CGRect) -> Void
         private var restored = false
+        /// 復元直後に押し戻すための目標値と、その有効期限
+        private var desired: CGRect?
+        private var enforceUntil: Date?
+        /// 自分が setFrame した通知で再入しないための印
+        private var applying = false
 
         init(saved: CGRect?, onChange: @escaping (CGRect) -> Void) {
             self.saved = saved
@@ -60,7 +65,14 @@ struct WindowFrameKeeper: NSViewRepresentable {
             let screens = NSScreen.screens.map(\.visibleFrame)
             guard let fallback = NSScreen.main?.visibleFrame ?? screens.first else { return }
             let placed = WindowPlacement.onScreen(saved, screens: screens, fallback: fallback)
+            applying = true
             window.setFrame(placed, display: true)
+            applying = false
+            // SwiftUI が自前の frame autosave をこの後に適用してくることがあり、
+            // 画面外の値で上書きされる (実測)。setFrameAutosaveName("") でも
+            // 付け直されるため、起動直後の短い間だけこちらの値へ押し戻す
+            desired = placed
+            enforceUntil = Date().addingTimeInterval(2)
             // 位置がおかしいという報告のときに、保存値・補正・画面構成が一度に分かるようにする
             AppLog.info(
                 "ウィンドウ復元: 保存=\(saved) 適用=\(window.frame) 画面=\(screens)")
@@ -77,7 +89,21 @@ struct WindowFrameKeeper: NSViewRepresentable {
         }
 
         @objc private func windowFrameChanged(_ notification: Notification) {
-            guard let window = notification.object as? NSWindow else { return }
+            guard let window = notification.object as? NSWindow, !applying else { return }
+            // 起動直後に他所から動かされたら押し戻す。期限を過ぎたら諦めて
+            // 以後はユーザーの操作としてそのまま記録する
+            if let desired, let until = enforceUntil {
+                if Date() < until {
+                    guard window.frame != desired else { return }
+                    AppLog.info("ウィンドウ位置が復元後に変えられたので戻す: \(window.frame) → \(desired)")
+                    applying = true
+                    window.setFrame(desired, display: true)
+                    applying = false
+                    return
+                }
+                self.desired = nil
+                enforceUntil = nil
+            }
             onChange(window.frame)
         }
     }
