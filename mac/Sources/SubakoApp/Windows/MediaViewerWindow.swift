@@ -35,6 +35,8 @@ final class MediaViewerController {
             win.center()
             window = win
         }
+        // ウィンドウは使い回すので、開き直しをビュー側へ伝えてフォーカスを取り戻す
+        state.showCount += 1
         window?.makeKeyAndOrderFront(nil)
     }
 }
@@ -44,6 +46,8 @@ final class MediaViewerController {
 final class ViewerState {
     var entries: [MediaViewerEntry] = []
     var index = 0
+    /// show() のたびに増える。ビューを作り直さない開き直しの検知用
+    var showCount = 0
 }
 
 struct MediaViewerView: View {
@@ -52,6 +56,7 @@ struct MediaViewerView: View {
 
     @Environment(\.openURL) private var openURL
     @State private var image: NSImage?
+    @FocusState private var focused: Bool
 
     private var entry: MediaViewerEntry? {
         state.entries.indices.contains(state.index) ? state.entries[state.index] : nil
@@ -88,6 +93,16 @@ struct MediaViewerView: View {
                 ImageBox(NSImage(contentsOfFile: path))
             }.value.image
         }
+        // onKeyPress は focusable より後に付けること。逆順だとフォーカスを持つビューの
+        // 外側になり、ハンドラが一度も呼ばれない (以前はこれで ←/→/Esc が全滅していた)。
+        // また .focusable() は「受け取れる」だけなので defaultFocus で実際に当てる
+        .focusable()
+        .focusEffectDisabled()
+        .focused($focused)
+        .defaultFocus($focused, true)
+        // ウィンドウを使い回して開き直したとき / ◀▶ ボタンに奪われたあとに取り戻す
+        .onChange(of: state.showCount) { focused = true }
+        .onChange(of: state.index) { focused = true }
         .onKeyPress(.leftArrow) {
             if state.index > 0 { state.index -= 1 }
             return .handled
@@ -100,7 +115,6 @@ struct MediaViewerView: View {
             onClose()
             return .handled
         }
-        .focusable()
     }
 
     private func navButton(_ systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
