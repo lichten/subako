@@ -206,7 +206,8 @@ public enum TweetJsonParser {
         if isAbsolute, components?.host?.contains("pbs.twimg.com") == true {
             if let ext { return ext }
             let format = components?.queryItems?.first(where: { $0.name == "format" })?.value
-            return (format?.isEmpty == false) ? format! : "jpg"
+            if let format, !format.isEmpty { return format }
+            return "jpg"
         }
         return ext ?? "jpg"
     }

@@ -118,6 +118,8 @@ import Testing
     @Test func mediaPageReturnsOwnMediaOnlyExcludingRetweets() async throws {
         let t = try TestDataDir()
         defer { t.cleanup() }
+        // JSONL フィクスチャは 1 行 1 レコードの契約のため折り返せない
+        // swiftlint:disable line_length
         try await t.importUser("grace", [
             // 本文画像 2 枚 (最新)
             #"{"id":"4","created_at":"Tue Jul 21 20:23:54 +0000 2026","full_text":"own2","entities":[{"type":"photo","link":"https://pbs.twimg.com/media/A1.jpg"},{"type":"photo","link":"https://pbs.twimg.com/media/A2.jpg"}]}"#,
@@ -128,6 +130,7 @@ import Testing
             // 画像なし
             #"{"id":"1","created_at":"Wed Apr 11 08:26:14 +0000 2007","full_text":"plain","entities":[]}"#,
         ])
+        // swiftlint:enable line_length
 
         let tweets = TweetRepository(t.db)
         let page = try await tweets.getMediaPage(usernames: ["grace"], after: nil, limit: 10)

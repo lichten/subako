@@ -49,7 +49,7 @@ public enum SearchQueryOperators {
             .trimmingCharacters(in: .whitespaces)
         // Compose が付けた外側括弧の逆変換。演算子がなかった場合はユーザーが
         // 意図して書いた括弧の可能性があるため外さない (不要な差分 = 状態リセットを防ぐ)
-        if (minRetweets != nil || minFaves != nil), isFullyParenthesized(baseQuery) {
+        if minRetweets != nil || minFaves != nil, isFullyParenthesized(baseQuery) {
             baseQuery = String(baseQuery.dropFirst().dropLast())
                 .trimmingCharacters(in: .whitespaces)
         }

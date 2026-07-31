@@ -1,0 +1,79 @@
+# mac パッケージの SwiftLint 設定。CI では --strict で実行する (警告も失敗扱い)。
+# 方針: 既存コードのリファクタはしない。閾値は実態 (2026-07 時点の計測) に合わせ、
+# 既知の逸脱はファイル側の swiftlint:disable コメントで明示する。
+# CI のプリインストール版は 0.65.0 — ローカルもそれ以上を使うこと。
+
+included:
+  - Package.swift
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - dist
+
+opt_in_rules:
+  - force_unwrapping               # 既存箇所は disable コメントで明示
+  - implicitly_unwrapped_optional  # 現状 0 件。今後も禁止
+  - empty_count                    # 現状 0 件
+  - fatal_error_message            # 現状 0 件
+  - yoda_condition
+  - redundant_nil_coalescing
+  - toggle_bool
+
+disabled_rules:
+  # 静的な NSRegularExpression 12 箇所が try! を使う。パターンは全てリテラルで、
+  # 失敗 = 起動時クラッシュはプログラマエラーとして扱う設計のため許容する
+  - force_try
+  # Swift 6.1 以降のトレーリングカンマを Package.swift 含め全体で使っている
+  - trailing_comma
+  # 外部由来の壊れ得るデータ (JSONL 行・fetcher 出力) は String(decoding:) の
+  # lossy デコードで受け、破損は後段 (JSON パース等) で落とす設計のため
+  - optional_data_string_conversion
+
+line_length:
+  warning: 160   # Sources の最長は 154 (Linkifier の正規表現)
+  error: 300
+  ignores_urls: true
+  ignores_interpolated_strings: true
+
+file_length:
+  warning: 600
+  error: 1200
+  # AppModel.swift (1,028 行) と Dialogs.swift (719 行) はファイル先頭の
+  # swiftlint:disable で明示的に除外 (分割リファクタは別課題)
+
+type_body_length:
+  warning: 350   # ViewerDatabase / MainWindow / TweetRepository (280 行台) を許容
+  error: 600     # AppModel クラス (~950 行) はファイル側で disable
+
+function_body_length:
+  warning: 100   # 最長は ViewerDatabase.ensureCreated (~96 行、スキーマ定義)
+  error: 150
+
+cyclomatic_complexity:
+  warning: 15    # Smoke.main / MainWindow.sheetView 等が 10 を少し超える
+  error: 25
+
+function_parameter_count:
+  warning: 8     # FetcherProcess.run (7 引数) 等の設定引数系を許容
+  error: 10
+
+large_tuple:
+  warning: 3     # SearchQueryOperators.split 等の 3 要素ラベル付きタプルを許容
+  error: 4
+
+identifier_name:
+  min_length: 1  # rc (SQLite 戻り値) / ns (NSString) など 1–2 字の局所変数が慣用的
+
+empty_count:
+  only_after_dot: true  # Int64 の件数変数 `count > 0` (UnreadBadgeView) を誤検知しない
+
+blanket_disable_command:
+  # ファイル単位が本質の type_body_length はファイル先頭での disable を許可
+  # (AppModel.swift)。前半 4 つはデフォルト値の維持
+  allowed_rules: ["file_header", "file_length", "file_name", "single_test_class", "type_body_length"]
+
+opening_brace:
+  ignore_multiline_function_signatures: true  # 複数行シグネチャ後の独立行 `{`
+  ignore_multiline_statement_conditions: true

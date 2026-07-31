@@ -7,9 +7,12 @@ public enum TweetURL {
     /// author を特定できない場合 (author が無くアーカイブ名がバケット ID の場合) は
     /// /i/web/status/ フォールバック。
     public static func status(author: String?, tweetId: String) -> URL {
+        // ホスト固定 + パス連結の URL 文字列は構造上妥当なため force unwrap を許容
         if let author, !author.isEmpty {
+            // swiftlint:disable:next force_unwrapping
             return URL(string: "https://x.com/\(author)/status/\(tweetId)")!
         }
+        // swiftlint:disable:next force_unwrapping
         return URL(string: "https://x.com/i/web/status/\(tweetId)")!
     }
 

@@ -1,6 +1,10 @@
 import Foundation
 import SubakoCore
 
+// AppModel は Windows 版 MainViewModel の移植で意図的に 1 ファイルに集約している。
+// 分割リファクタは別課題 (.swiftlint.yml 参照)。
+// swiftlint:disable file_length type_body_length
+
 enum ArchiveSelection: Equatable, Hashable {
     case user(String)
     case search(String)
@@ -166,13 +170,17 @@ final class AppModel {
             importer = JsonlImporter(db)
             iconCache = IconCache(dataDir: dataDir)
             thumbnailCache = IconCache(dataDir: dataDir, subDirectory: "thumbnails")
+            // 直前で代入した直後の unwrap (起動シーケンスの不変条件)
+            // swiftlint:disable:next force_unwrapping
             let queue = ReadMarkQueue(repo: tweetRepo!, readOnly: db.isReadOnly)
             readQueue = queue
             await queue.start()
 
             if !db.isReadOnly {
                 // 既存データの自動登録 (§1.2 手順 3)
+                // swiftlint:disable:next force_unwrapping
                 _ = try await userRepo!.registerExistingDataDirs()
+                // swiftlint:disable:next force_unwrapping
                 _ = try await userRepo!.registerExistingSearchDirs()
             }
             try await reloadLists()

@@ -14,12 +14,14 @@ import Foundation
 // 両プラットフォームでアイコンの見た目がずれる。
 // デザインの「元データ」はこのコード自体 (docs/release-plan.md §3-1)。
 
+// 固定引数からの色生成は失敗しない (失敗 = 生成ツールの即時クラッシュで良い)
+// swiftlint:disable:next force_unwrapping
 let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
 func srgb(_ r: Int, _ g: Int, _ b: Int) -> CGColor {
     CGColor(
         colorSpace: sRGB,
-        components: [CGFloat(r) / 255, CGFloat(g) / 255, CGFloat(b) / 255, 1])!
+        components: [CGFloat(r) / 255, CGFloat(g) / 255, CGFloat(b) / 255, 1])! // swiftlint:disable:this force_unwrapping
 }
 
 /// 巣箱: 切妻屋根 + 木の本体 + 丸い入口 + 止まり木。

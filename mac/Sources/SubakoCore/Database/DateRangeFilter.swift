@@ -1,5 +1,9 @@
 import Foundation
 
+// 固定入力 (gregorian + 妥当な year/month/day) に対する Calendar API は失敗しないため、
+// 本ファイルでは force unwrap を許容する。
+// swiftlint:disable force_unwrapping
+
 /// sort_key (epoch 秒) に対する半開区間 [fromEpoch, toEpochExclusive)
 /// (C# Models/DateRangeFilter.cs の移植)。
 public struct DateRangeFilter: Sendable, Equatable {
@@ -65,3 +69,5 @@ public struct DateRangeFilter: Sendable, Equatable {
         return calendar.range(of: .day, in: .month, for: date)!.count
     }
 }
+
+// swiftlint:enable force_unwrapping

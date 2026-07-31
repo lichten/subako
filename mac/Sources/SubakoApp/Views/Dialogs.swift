@@ -2,6 +2,8 @@ import SwiftUI
 import SubakoCore
 
 // すべてのダイアログは内容依存サイズ (固定サイズ禁止 — docs/mac-port-notes.md §5)。
+// ダイアログ群を 1 ファイルに集約しているため行数超過を許容 (.swiftlint.yml 参照)。
+// swiftlint:disable file_length
 
 /// 初回セットアップ (§1.1): データフォルダ 1 項目のみ。
 struct FirstRunSheet: View {
@@ -614,8 +616,7 @@ struct ImportFollowingsSheet: View {
                             Toggle(tag.name, isOn: Binding(
                                 get: { selectedTags.contains(tag.tagId) },
                                 set: { on in
-                                    if on { selectedTags.insert(tag.tagId) }
-                                    else { selectedTags.remove(tag.tagId) }
+                                    if on { selectedTags.insert(tag.tagId) } else { selectedTags.remove(tag.tagId) }
                                 }))
                             .toggleStyle(.button)
                             .controlSize(.small)

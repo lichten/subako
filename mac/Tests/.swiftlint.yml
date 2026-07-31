@@ -1,0 +1,11 @@
+# テストコード向けの緩和 (親 .swiftlint.yml との差分のみ)。
+# - フィクスチャ前提の force unwrap (`rows.last!` 等) は失敗 = テスト失敗なので許容
+# - swift-testing のテスト関数は日本語名 (仕様文) を使う慣習のため、
+#   小文字始まりの検証と記号制限を外す
+disabled_rules:
+  - force_unwrapping
+
+identifier_name:
+  min_length: 1
+  validates_start_with_lowercase: off
+  allowed_symbols: ["_"]

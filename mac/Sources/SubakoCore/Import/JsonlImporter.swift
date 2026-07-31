@@ -80,6 +80,8 @@ public final class JsonlImporter: Sendable {
             let insertedCount = try await db.write { conn in
                 var inserted = 0
                 for entry in batchCopy {
+                    // 条件が挿入そのもの (副作用 + try) のため where 節にできない
+                    // swiftlint:disable:next for_where
                     if try Self.insertTweet(conn, entry.tweet) {
                         inserted += 1
                     }
@@ -231,7 +233,8 @@ final class ByteLineReader {
 
     /// 1 行読む。text は改行を除いた文字列、lineOffset/lineLength は改行を含まない
     /// バイト範囲、endOffset は改行の次のバイト位置 (= 次回再開オフセット)。
-    func readLine() -> (text: String, lineOffset: Int64, lineLength: Int64, endOffset: Int64)? {
+    /// 戻り値はラベル付き 4 要素で自己記述的なためタプルのまま。
+    func readLine() -> (text: String, lineOffset: Int64, lineLength: Int64, endOffset: Int64)? { // swiftlint:disable:this large_tuple
         let lineStart = position - Int64(pending.count)
         while true {
             if bufPos >= buffer.count {
