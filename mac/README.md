@@ -27,7 +27,9 @@ mac/
 ├── Sources/SubakoApp/       # SwiftUI アプリ本体
 ├── Sources/subako-smoke/    # 実データ疎通確認 CLI (mac-port-notes §6.3)
 ├── Tests/SubakoCoreTests/   # C# テスト (viewer/TweetViewer.Tests) からの移植
-└── Scripts/make-app.sh      # Subako.app バンドルの組み立て
+├── Sources/subako-icongen/  # アプリアイコンの描画 (tools/icongen の移植)
+├── Resources/Subako.icns    # 生成済みアイコン (make-icon.sh で再生成)
+└── Scripts/                 # make-app.sh (.app 組み立て) / make-icon.sh (アイコン)
 ```
 
 ## ビルド・テスト
@@ -41,6 +43,19 @@ swift build         # デバッグビルド
 
 開発中は `swift run SubakoApp` でも起動できる。Xcode を使う場合は
 `mac/Package.swift` をそのまま開けばよい (xcodeproj は無い)。
+
+## アプリケーションアイコン
+
+`Resources/Subako.icns` を commit してあり、`make-app.sh` はそれを複製するだけ
+(Windows 版が `subako.ico` を commit しているのと同じ扱い)。再生成するときは:
+
+```sh
+./Scripts/make-icon.sh   # Sources/subako-icongen で描画 → iconutil で .icns 化
+```
+
+図形の定義は `Sources/subako-icongen/IconGen.swift`。**Windows 版
+(`tools/icongen/Program.cs`) と同一の比率にすること** — 片方だけ直すと
+両プラットフォームで見た目がずれる。詳細は docs/mac-port-notes.md §4.7。
 
 ## 実データとの疎通確認 (アプリより先に)
 

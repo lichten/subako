@@ -147,6 +147,31 @@ Mac 版の割り当て:
   再描画が走る(§4.5 と同じ理由)。
 - 値は 180〜600 にクランプする(§4 のサイドバー可変範囲)。
 
+## 4.7 アプリケーションアイコン
+
+デザインの「元データ」はコード(release-plan.md §3-1)。同じ図形を 2 実装で持つので、
+**片方だけ直さないこと**。
+
+| | Windows | Mac |
+|---|---|---|
+| 描画コード | `tools/icongen/Program.cs` (C# + WPF) | `mac/Sources/subako-icongen/IconGen.swift` |
+| 生成物 (commit する) | `viewer/TweetViewer/subako.ico` | `mac/Resources/Subako.icns` |
+| 再生成 | `dotnet run --project tools/icongen -- <出力先>` | `mac/Scripts/make-icon.sh` |
+| 参照 | `.csproj` の `ApplicationIcon` | Info.plist の `CFBundleIconFile` |
+
+図形は一辺 `s` に対する比率で定義する(本体・屋根・入口・止まり木の座標は
+両実装で同一)。**16px 以下では止まり木を省き、入口の半径を `0.15s → 0.17s`**
+にする特例も揃える。
+
+Mac 固有の注意:
+
+- `tools/icongen` は WPF 依存で **macOS では実行できない**。だから移植が要る。
+- macOS は 1024px まで要求するので、256px の PNG を拡大するのでは足りない。
+  `.iconset` に 16〜1024 の 10 枚を出してから `iconutil -c icns` する。
+- **色は sRGB で指定すること**。`CGColor(red:green:blue:alpha:)` は generic RGB に
+  なり、sRGB のコンテキストへ描くと変換で明るくずれる(実測で Windows 版と
+  色が食い違った)。`CGColor(colorSpace:components:)` を使う。
+
 ## 5. Windows 版の既知の課題(新実装では最初から回避)
 
 - **画像ビューアの「ブラウザで開く」**: アーカイブ名から無条件に

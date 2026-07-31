@@ -16,12 +16,22 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BIN" "$APP/Contents/MacOS/Subako"
 
+# アイコン (無くてもビルドは通す。再生成は Scripts/make-icon.sh)
+ICON_KEY=""
+if [ -f Resources/Subako.icns ]; then
+    cp Resources/Subako.icns "$APP/Contents/Resources/Subako.icns"
+    ICON_KEY="    <key>CFBundleIconFile</key><string>Subako</string>"
+else
+    echo "warning: Resources/Subako.icns が無いのでアイコン無しで作ります" >&2
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key><string>Subako</string>
+${ICON_KEY}
     <key>CFBundleIdentifier</key><string>dev.lichten.subako</string>
     <key>CFBundleName</key><string>Subako</string>
     <key>CFBundleDisplayName</key><string>Subako</string>

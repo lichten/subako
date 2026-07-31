@@ -35,6 +35,8 @@ let package = Package(
             name: "subako-smoke",
             dependencies: ["SubakoCore"]
         ),
+        // アプリケーションアイコンの生成 (tools/icongen の移植。Scripts/make-icon.sh から使う)
+        .executableTarget(name: "subako-icongen"),
         .testTarget(
             name: "SubakoCoreTests",
             dependencies: ["SubakoCore"]
