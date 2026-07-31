@@ -6,10 +6,8 @@ struct TimelineView: View {
     @Bindable var app: AppModel
     let onOpenImage: (TweetItem, ResolvedImage) -> Void
 
-    /// カードごとの表示フレーム (scrollView 座標系 = ビューポート相対)。自動既読の判定に使う
-    @State private var cardFrames: [String: CGRect] = [:]
-    @State private var metrics = ScrollMetrics()
-    @State private var readTimer: Timer?
+    /// スクロール中に変わる状態はすべてここ (@State に置くと毎フレーム body が再評価される)
+    @State private var tracker = ScrollTracker()
     @State private var scrollPosition = ScrollPosition()
 
     var body: some View {
@@ -22,12 +20,12 @@ struct TimelineView: View {
                     .onGeometryChange(for: CGRect.self) { proxy in
                         proxy.frame(in: .scrollView)
                     } action: { frame in
-                        cardFrames[item.id] = frame
+                        tracker.cardFrames[item.id] = frame
                     }
                     .onDisappear {
                         // LazyVStack が破棄したカードの古い矩形を残さない
                         // (残すと画面外のツイートを既読にしてしまう)
-                        cardFrames[item.id] = nil
+                        tracker.cardFrames[item.id] = nil
                     }
                 }
                 if app.timelineLoading {
@@ -57,7 +55,7 @@ struct TimelineView: View {
                 contentHeight: geometry.contentSize.height,
                 viewportHeight: geometry.containerSize.height)
         } action: { _, metrics in
-            self.metrics = metrics
+            tracker.update(from: metrics)
             // 末尾まで残り約 2 画面分で次ページ (リストが空の間は発火しない — §5.6)
             if !app.timelineItems.isEmpty, !app.timelineLoading, app.timelineHasMore,
                metrics.contentHeight - (metrics.offsetY + metrics.viewportHeight)
@@ -67,12 +65,12 @@ struct TimelineView: View {
             restartReadTimer()
         }
         .keyboardScroll(
-            metrics: metrics, position: $scrollPosition, refocusOn: app.generation)
+            tracker: tracker, position: $scrollPosition, refocusOn: app.generation)
         .onChange(of: app.generation) {
             // 表示切替でリストが入れ替わったら先頭へ (§5.7)。
             // 切替前のスナップショットで既読化が走らないようタイマーも止める
-            readTimer?.invalidate()
-            cardFrames = [:]
+            tracker.readTimer?.invalidate()
+            tracker.cardFrames = [:]
             scrollPosition.scrollTo(edge: .top)
         }
         .onChange(of: app.timelineLoadedOnce) {
@@ -82,7 +80,7 @@ struct TimelineView: View {
             }
         }
         .onDisappear {
-            readTimer?.invalidate()
+            tracker.readTimer?.invalidate()
         }
     }
 
@@ -90,10 +88,10 @@ struct TimelineView: View {
     /// (およびビューポートより背が高く下端を通過したカード) を既読にする (§8.1)。
     private func restartReadTimer() {
         guard !app.isReadOnly else { return }
-        readTimer?.invalidate()
-        let height = metrics.viewportHeight
-        let frames = cardFrames
-        readTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
+        tracker.readTimer?.invalidate()
+        let height = tracker.viewportHeight
+        let frames = tracker.cardFrames
+        tracker.readTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
             Task { @MainActor in
                 markVisibleAsRead(viewportHeight: height, frames: frames)
             }
@@ -119,7 +117,7 @@ struct MediaGridView: View {
     @Bindable var app: AppModel
     let onOpen: (MediaItem) -> Void
 
-    @State private var metrics = ScrollMetrics()
+    @State private var tracker = ScrollTracker()
     @State private var scrollPosition = ScrollPosition()
 
     var body: some View {
@@ -156,10 +154,10 @@ struct MediaGridView: View {
                     contentHeight: geometry.contentSize.height,
                     viewportHeight: geometry.containerSize.height)
             } action: { _, metrics in
-                self.metrics = metrics
+                tracker.update(from: metrics)
             }
             .keyboardScroll(
-                metrics: metrics, position: $scrollPosition, refocusOn: app.generation)
+                tracker: tracker, position: $scrollPosition, refocusOn: app.generation)
         }
         .background(Color(nsColor: .textBackgroundColor))
         .overlay {
