@@ -11,6 +11,7 @@ enum SheetKind: Identifiable {
     case manageTags
     case deleteArchive(ArchiveItem)
     case backfill(ArchiveItem)
+    case searchUpdate(ArchiveItem)
     case searchBackfill(ArchiveItem)
     case updateAll
     case importFollowings
@@ -26,6 +27,7 @@ enum SheetKind: Identifiable {
         case .manageTags: return "manageTags"
         case .deleteArchive(let i): return "deleteArchive:\(i.id)"
         case .backfill(let i): return "backfill:\(i.id)"
+        case .searchUpdate(let i): return "searchUpdate:\(i.id)"
         case .searchBackfill(let i): return "searchBackfill:\(i.id)"
         case .updateAll: return "updateAll"
         case .importFollowings: return "importFollowings"
@@ -312,6 +314,8 @@ struct MainWindow: View {
             DeleteArchiveSheet(app: app, item: item)
         case .backfill(let item):
             BackfillSheet(app: app, item: item)
+        case .searchUpdate(let item):
+            SearchUpdateSheet(app: app, item: item)
         case .searchBackfill(let item):
             SearchBackfillSheet(app: app, item: item)
         case .updateAll:

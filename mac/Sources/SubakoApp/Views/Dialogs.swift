@@ -509,6 +509,39 @@ struct BackfillSheet: View {
     }
 }
 
+/// 検索の差分更新: 最大リクエスト数 (既定 500)。バックフィルと同ダイアログの
+/// タイトル違い (§9.6)。ユーザー TL の更新と違い、検索は放置期間が長いと新着が
+/// 大量になり得るため上限入力を必須にする (Windows 版 MenuSearchUpdate_Click と同じ)。
+struct SearchUpdateSheet: View {
+    @Bindable var app: AppModel
+    let item: ArchiveItem
+    @Environment(\.dismiss) private var dismiss
+    @State private var maxRequests = "500"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("「\(item.displayLabel)」を更新 (差分取得)").font(.headline)
+            LimitField(label: "最大リクエスト数", text: $maxRequests)
+            Text("上限に達しても安全に中断され、取得済み分は保存されます。再実行で続きから再開します")
+                .font(.system(size: 11)).foregroundStyle(Theme.auxTextLight)
+            HStack {
+                Spacer()
+                Button("キャンセル") { dismiss() }
+                Button("開始") {
+                    guard let limit = Int(maxRequests), limit > 0 else { return }
+                    dismiss()
+                    app.startFetch(
+                        username: item.id, mode: .searchUpdate,
+                        maxRequests: limit, searchQuery: item.searchQuery)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(Int(maxRequests).map { $0 <= 0 } ?? true)
+            }
+        }
+        .padding(20)
+    }
+}
+
 /// 検索バックフィル: 遡る開始日 + 最大リクエスト数 (既定 2014-01-01 / 500)。
 struct SearchBackfillSheet: View {
     @Bindable var app: AppModel

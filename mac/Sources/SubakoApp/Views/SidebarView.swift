@@ -170,11 +170,13 @@ struct SidebarView: View {
     }
 
     private func startUpdate(_ item: ArchiveItem) {
-        app.startFetch(
-            username: item.id,
-            mode: item.isSearch ? .searchUpdate : .update,
-            maxRequests: item.isSearch ? 500 : nil,
-            searchQuery: item.searchQuery)
+        // 検索は上限入力ダイアログを経由する (§9.6)。ユーザー TL は既知ツイート
+        // 到達で止まるため上限なしで即実行
+        if item.isSearch {
+            sheet = .searchUpdate(item)
+        } else {
+            app.startFetch(username: item.id, mode: .update, maxRequests: nil)
+        }
     }
 
     @ViewBuilder

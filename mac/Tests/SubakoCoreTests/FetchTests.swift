@@ -109,6 +109,11 @@ import Testing
             == ["main.py", "--output-dir", "/data", "--search", "猫",
                 "--search-name", "cat-12345678", "--max-requests", "50"])
         #expect(FetchArguments.build(
+            username: "searches/cat-12345678", mode: .searchUpdate, dataDir: "/data",
+            maxRequests: 500, searchQuery: "猫")
+            == ["main.py", "--output-dir", "/data", "--search", "猫",
+                "--search-name", "cat-12345678", "--update", "--max-requests", "500"])
+        #expect(FetchArguments.build(
             username: "searches/cat-12345678", mode: .searchBackfill, dataDir: "/data",
             maxRequests: 500, searchQuery: "猫", backfillSince: "2014-01-01")
             == ["main.py", "--output-dir", "/data", "--search", "猫",
