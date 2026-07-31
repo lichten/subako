@@ -105,11 +105,14 @@ final class AppModel {
     private(set) var timelineHasMore = true
     private(set) var timelineLoading = false
     private(set) var timelineLoadedOnce = false
+    /// 直近のページ読込が失敗したときの表示用メッセージ (成功・リセットで消える)
+    private(set) var timelineLoadError: String?
     private var timelineCursor: TweetCursor?
     private(set) var mediaItems: [MediaItem] = []
     private(set) var mediaHasMore = true
     private(set) var mediaLoading = false
     private(set) var mediaLoadedOnce = false
+    private(set) var mediaLoadError: String?
     private var mediaCursor: MediaCursor?
     /// 表示対象の切替ごとに増える世代。古いロード結果の反映と自動既読の混線を防ぐ
     private(set) var generation = 0
@@ -308,10 +311,12 @@ final class AppModel {
         timelineCursor = nil
         timelineHasMore = true
         timelineLoadedOnce = false
+        timelineLoadError = nil
         mediaItems = []
         mediaCursor = nil
         mediaHasMore = true
         mediaLoadedOnce = false
+        mediaLoadError = nil
         Task {
             await refreshDateBounds()
             // リセットの初回ページは旧ロードが実行中でも必ず走らせる
@@ -398,10 +403,12 @@ final class AppModel {
         timelineCursor = nil
         timelineHasMore = true
         timelineLoadedOnce = false
+        timelineLoadError = nil
         mediaItems = []
         mediaCursor = nil
         mediaHasMore = true
         mediaLoadedOnce = false
+        mediaLoadError = nil
         Task {
             // リセットの初回ページは旧ロードが実行中でも必ず走らせる
             await loadNextTimelinePage(force: true)
@@ -468,10 +475,16 @@ final class AppModel {
             }
             timelineHasMore = page.rows.count == Self.timelinePageSize
             timelineLoadedOnce = true
+            timelineLoadError = nil
         } catch {
             AppLog.error("タイムライン読込エラー: \(error)")
-            timelineHasMore = false
+            // ページングは止めない。timelineHasMore と timelineCursor をそのまま残すので、
+            // 「再試行」か次のスクロールで同じページをやり直せる
+            // (Windows 版 TweetListViewModel も失敗時に HasMore を触らない)
+            let message = Self.userMessage(for: error)
+            timelineLoadError = message
             timelineLoadedOnce = true
+            statusMessage = "タイムライン読込エラー: \(message)"
         }
     }
 
@@ -514,11 +527,32 @@ final class AppModel {
             }
             mediaHasMore = rows.count == Self.mediaPageSize
             mediaLoadedOnce = true
+            mediaLoadError = nil
         } catch {
             AppLog.error("メディア読込エラー: \(error)")
-            mediaHasMore = false
+            // タイムライン側と同じ — ページングは止めず、再試行できる状態で残す
+            let message = Self.userMessage(for: error)
+            mediaLoadError = message
             mediaLoadedOnce = true
+            statusMessage = "メディア読込エラー: \(message)"
         }
+    }
+
+    /// 読込失敗行の「再試行」。失敗したページをそのまま引き直す
+    func retryTimelineLoad() async {
+        timelineLoadError = nil
+        await loadNextTimelinePage()
+    }
+
+    func retryMediaLoad() async {
+        mediaLoadError = nil
+        await loadNextMediaPage()
+    }
+
+    /// SQLiteError の description は SQL 文まで含むので、表示は sqlite のメッセージだけにする
+    /// (完全な内容はログに残る)
+    private static func userMessage(for error: Error) -> String {
+        (error as? SQLiteError)?.message ?? error.localizedDescription
     }
 
     // MARK: - 既読 (§8)

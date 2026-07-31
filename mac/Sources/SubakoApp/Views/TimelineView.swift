@@ -33,6 +33,10 @@ struct TimelineView: View {
                 if app.timelineLoading {
                     ProgressView()
                         .padding()
+                } else if let error = app.timelineLoadError {
+                    LoadErrorView(message: error) {
+                        Task { await app.retryTimelineLoad() }
+                    }
                 }
             }
             .scrollTargetLayout()
@@ -40,7 +44,9 @@ struct TimelineView: View {
         .scrollPosition($scrollPosition)
         .background(Color(nsColor: .textBackgroundColor))
         .overlay {
-            if app.timelineLoadedOnce, app.timelineItems.isEmpty, app.dateFilter.isActive {
+            // 読込失敗中は「ありません」と言い切らない (再試行行の方を出す)
+            if app.timelineLoadedOnce, app.timelineItems.isEmpty, app.dateFilter.isActive,
+               app.timelineLoadError == nil {
                 Text("この期間のツイートはありません")
                     .foregroundStyle(Theme.auxTextLight)
             }
@@ -138,12 +144,17 @@ struct MediaGridView: View {
                 }
                 if app.mediaLoading {
                     ProgressView().padding()
+                } else if let error = app.mediaLoadError {
+                    LoadErrorView(message: error) {
+                        Task { await app.retryMediaLoad() }
+                    }
                 }
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
         .overlay {
-            if app.mediaLoadedOnce, app.mediaItems.isEmpty, app.dateFilter.isActive {
+            if app.mediaLoadedOnce, app.mediaItems.isEmpty, app.dateFilter.isActive,
+               app.mediaLoadError == nil {
                 Text("この期間のメディアはありません")
                     .foregroundStyle(Theme.auxTextLight)
             }

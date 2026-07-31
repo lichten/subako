@@ -79,6 +79,28 @@ struct UnreadBadgeView: View {
     }
 }
 
+/// ページ読込に失敗したときのリスト内表示 (§5.6)。
+/// ページングは止めないので、ここから同じページを引き直せる。
+struct LoadErrorView: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text("読み込みに失敗しました")
+                .font(.system(size: 12, weight: .semibold))
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.auxText)
+                .multilineTextAlignment(.center)
+            Button("再試行", action: onRetry)
+                .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+    }
+}
+
 /// URL リンク化した本文テキスト (§5.5)。絵文字はシステムフォントがカラー描画する。
 struct LinkifiedTextView: View {
     let text: String
