@@ -67,6 +67,36 @@ Windows 版と同じデータを読む Mac 版ビューアを実装するため�
 - 設定・ログはデータフォルダに入れない(マシンローカル)。Mac なら
   `~/Library/Application Support/Subako/` と `~/Library/Logs/Subako/` 等が相当。
 
+## 4.5 キーボードスクロール(§5.7)のプラットフォーム差
+
+移動量の規則は共通(↑/↓ = 48px、PageUp/PageDown = `max(表示域×0.875, 表示域−48px)`、
+Home/End = 先頭・末尾)。**対応キーだけはプラットフォームの慣習に合わせる**。
+Mac 版の割り当て:
+
+| キー | 動作 | 根拠 |
+|---|---|---|
+| ↑ / ↓ | 48px | Safari が「矢印キーでスクロール」を明記。WebKit / Chromium の 1 行 40px 相当 |
+| PageUp / PageDown(ノート型は fn+↑/↓) | 1 画面(数行残す) | Apple が fn+↑/↓ を "Scroll up/down one page" と明記。係数 0.875 は Chromium の `kMinFractionToStepWhenPaging` と同値 |
+| Home / End(ノート型は fn+←/→) | 先頭 / 末尾 | Apple が fn+←/→ を "Scroll to the beginning/end of a document" と明記 |
+| **Space / Shift+Space** | PageDown / PageUp と同量 | Safari・Chrome とも公式ドキュメントに明記。Windows 版では ListBox の選択トグルに使われていて空いていない |
+| **Command+↑ / Command+↓** | 先頭 / 末尾 | Safari が「ページの左上/左下へ移動」と明記。ノート型には Home/End の物理キーが無いため実用上こちらが主役 |
+
+太字が Windows 版にない追加分。適用範囲もタイムラインとメディアグリッドの両方
+(Windows はタイムラインのみ)。←/→ は画像ビューアの前後移動に使うので割り当てない。
+
+実装上の注意(いずれも Mac 固有):
+
+- **端に達してもキーを消費する**(§5.7)。macOS は未処理の keyDown が
+  `NSResponder.noResponder(for:)` に落ちるとビープを鳴らすため、Windows 以上に重要。
+- **`onKeyPress` は既定で `.down` フェーズしか拾わない**。押しっぱなしに対応するには
+  `phases: [.down, .repeat]` を指定する。
+- **キーリピート中は `onScrollGeometryChange` が来ない**。計測値をそのまま基準にすると
+  同じ位置から同じ目標を計算し直して半分しか進まないため、直前に指示した目標を
+  短時間(200ms)保持して基準にする。
+- **`.focusable()` だけではフォーカスが当たらない**。`.defaultFocus` と、
+  レスポンダチェーンに乗ってからの遅延設定が要る。表示切替でツールバーや
+  サイドバーにフォーカスを奪われるので、`generation` の変化で取り戻す。
+
 ## 5. Windows 版の既知の課題(新実装では最初から回避)
 
 - **画像ビューアの「ブラウザで開く」**: アーカイブ名から無条件に

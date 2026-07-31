@@ -8,7 +8,7 @@ struct TimelineView: View {
 
     /// カードごとの表示フレーム (scrollView 座標系 = ビューポート相対)。自動既読の判定に使う
     @State private var cardFrames: [String: CGRect] = [:]
-    @State private var viewportHeight: CGFloat = 0
+    @State private var metrics = ScrollMetrics()
     @State private var readTimer: Timer?
     @State private var scrollPosition = ScrollPosition()
 
@@ -57,7 +57,7 @@ struct TimelineView: View {
                 contentHeight: geometry.contentSize.height,
                 viewportHeight: geometry.containerSize.height)
         } action: { _, metrics in
-            viewportHeight = metrics.viewportHeight
+            self.metrics = metrics
             // 末尾まで残り約 2 画面分で次ページ (リストが空の間は発火しない — §5.6)
             if !app.timelineItems.isEmpty, !app.timelineLoading, app.timelineHasMore,
                metrics.contentHeight - (metrics.offsetY + metrics.viewportHeight)
@@ -66,6 +66,8 @@ struct TimelineView: View {
             }
             restartReadTimer()
         }
+        .keyboardScroll(
+            metrics: metrics, position: $scrollPosition, refocusOn: app.generation)
         .onChange(of: app.generation) {
             // 表示切替でリストが入れ替わったら先頭へ (§5.7)。
             // 切替前のスナップショットで既読化が走らないようタイマーも止める
@@ -84,18 +86,12 @@ struct TimelineView: View {
         }
     }
 
-    private struct ScrollMetrics: Equatable {
-        var offsetY: CGFloat
-        var contentHeight: CGFloat
-        var viewportHeight: CGFloat
-    }
-
     /// スクロールが 300ms 静止したら、ビューポート内に完全表示されているカード
     /// (およびビューポートより背が高く下端を通過したカード) を既読にする (§8.1)。
     private func restartReadTimer() {
         guard !app.isReadOnly else { return }
         readTimer?.invalidate()
-        let height = viewportHeight
+        let height = metrics.viewportHeight
         let frames = cardFrames
         readTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
             Task { @MainActor in
@@ -122,6 +118,9 @@ struct TimelineView: View {
 struct MediaGridView: View {
     @Bindable var app: AppModel
     let onOpen: (MediaItem) -> Void
+
+    @State private var metrics = ScrollMetrics()
+    @State private var scrollPosition = ScrollPosition()
 
     var body: some View {
         GeometryReader { geo in
@@ -150,6 +149,17 @@ struct MediaGridView: View {
                     }
                 }
             }
+            .scrollPosition($scrollPosition)
+            .onScrollGeometryChange(for: ScrollMetrics.self) { geometry in
+                ScrollMetrics(
+                    offsetY: geometry.contentOffset.y,
+                    contentHeight: geometry.contentSize.height,
+                    viewportHeight: geometry.containerSize.height)
+            } action: { _, metrics in
+                self.metrics = metrics
+            }
+            .keyboardScroll(
+                metrics: metrics, position: $scrollPosition, refocusOn: app.generation)
         }
         .background(Color(nsColor: .textBackgroundColor))
         .overlay {
