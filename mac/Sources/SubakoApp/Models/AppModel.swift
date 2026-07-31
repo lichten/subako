@@ -990,7 +990,19 @@ final class AppModel {
 
     // MARK: - 終了処理
 
+    /// サイドバーの実測幅 (§2.2)。ドラッグのたびに再描画しないよう @Observable の
+    /// 追跡対象にしない — 終了時に settings へ移すだけ
+    @ObservationIgnored private var measuredSidebarWidth: Double?
+
+    func noteSidebarWidth(_ width: Double) {
+        guard width > 0 else { return }
+        measuredSidebarWidth = width
+    }
+
     func shutdown() async {
+        if let width = measuredSidebarWidth {
+            settings.sidebarWidth = WindowPlacement.clampSidebarWidth(width)
+        }
         await readQueue?.shutdown()
         db?.checkpointAndClose()
         settings.save()

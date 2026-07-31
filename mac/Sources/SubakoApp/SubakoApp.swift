@@ -23,6 +23,10 @@ struct SubakoApp: App {
             MainWindow(app: app)
         }
         .windowResizability(.contentMinSize)
+        // 保存値が無い初回だけ効く既定サイズ (Windows 版に合わせる)。
+        // 前回終了時の位置・サイズの復元は SwiftUI/AppKit の frame autosave が
+        // やってくれる (docs/mac-port-notes.md §4.6)
+        .defaultSize(width: 1100, height: 800)
     }
 }
 

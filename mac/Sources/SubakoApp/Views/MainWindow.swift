@@ -39,12 +39,25 @@ struct MainWindow: View {
     @State private var sheet: SheetKind?
     @State private var mediaViewer = MediaViewerController()
     @State private var fetchLogWindow = FetchLogWindowController()
+    /// サイドバー幅 (§2.2 で永続化)。前回終了時の値で開く
+    @State private var sidebarWidth: Double
+
+    init(app: AppModel) {
+        self.app = app
+        _sidebarWidth = State(
+            initialValue: WindowPlacement.clampSidebarWidth(app.settings.sidebarWidth))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            HSplitView {
+            // HSplitView は使わない。ウィンドウをリサイズするとサイドバーまで比例して
+            // 広がってしまい、Windows 版 (幅は固定、本文側が伸縮) と挙動が変わるため
+            HStack(spacing: 0) {
                 SidebarView(app: app, sheet: $sheet)
-                    .frame(minWidth: 180, idealWidth: app.settings.sidebarWidth, maxWidth: 600)
+                    .frame(width: sidebarWidth)
+                SidebarSplitter(width: $sidebarWidth) {
+                    app.noteSidebarWidth(sidebarWidth)
+                }
                 VStack(spacing: 0) {
                     toolbar
                     Divider()
