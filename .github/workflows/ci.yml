@@ -33,6 +33,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # プリインストール版 SwiftLint (0.65.0 時点で確認) を使う。build より先に置いて fail-fast
+      - name: SwiftLint
+        working-directory: mac
+        run: |
+          swiftlint version
+          swiftlint lint --strict --reporter github-actions-logging
+
+      # デフォルトの Xcode 16.x は Swift 6.1 のため swift-tools-version 6.2 の
+      # マニフェストを読めない。ランナー同梱の Xcode 26 系の最新を選ぶ
+      - name: Select Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)"
+
       - name: Swift build + test (SubakoCore)
         working-directory: mac
         run: swift test
