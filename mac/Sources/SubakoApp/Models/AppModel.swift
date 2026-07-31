@@ -78,6 +78,8 @@ final class AppModel {
     private(set) var tagRepo: TagRepository?
     private(set) var importer: JsonlImporter?
     private(set) var readQueue: ReadMarkQueue?
+    /// 既読投入 (enqueue) の直列チェーン。フラッシュ前にこれを待てば取りこぼさない
+    private var readEnqueueTask: Task<Void, Never>?
     private(set) var iconCache: IconCache?
     private(set) var thumbnailCache: IconCache?
 
@@ -148,6 +150,12 @@ final class AppModel {
     func openAndInitialize() async {
         needsFirstRun = false
         openError = nil
+        // 開き直し (設定変更) の際は、古いキューの未書込を古い DB へ書き切ってから捨てる。
+        // 新しい接続を開く前に済ませること
+        await flushReadMarks()
+        await readQueue?.shutdown()
+        readQueue = nil
+        readEnqueueTask = nil
         do {
             let dataDir = settings.effectiveDataDir
             let db = try ViewerDatabase(dataDir: dataDir, readOnly: settings.readOnlyMode)
@@ -211,6 +219,8 @@ final class AppModel {
 
     func reloadLists() async throws {
         guard let userRepo, let tagRepo, let db else { return }
+        // 未読数は read_state を読み直して楽観値を上書きするので、先に書き切る (§8.2)
+        await flushReadMarks()
         let userRows = try await userRepo.getAll()
         let searchRows = try await userRepo.getSearchBuckets()
         tags = try await tagRepo.getAll()
@@ -318,6 +328,8 @@ final class AppModel {
         mediaLoadedOnce = false
         mediaLoadError = nil
         Task {
+            // 再クエリが read_state の古い状態を読まないよう、先に書き切る (§8.2)
+            await flushReadMarks()
             await refreshDateBounds()
             // リセットの初回ページは旧ロードが実行中でも必ず走らせる
             await loadNextTimelinePage(force: true)
@@ -410,6 +422,8 @@ final class AppModel {
         mediaLoadedOnce = false
         mediaLoadError = nil
         Task {
+            // 再クエリが read_state の古い状態を読まないよう、先に書き切る (§8.2)
+            await flushReadMarks()
             // リセットの初回ページは旧ロードが実行中でも必ず走らせる
             await loadNextTimelinePage(force: true)
             await loadNextMediaPage(force: true)
@@ -573,11 +587,20 @@ final class AppModel {
                 archives: timelineItems[index].archives, delta: -1)
         }
         guard !marked.isEmpty else { return }
-        Task {
+        // 投入は直列につなぐ。flushReadMarks がこれを待てば、投入待ちを取りこぼさない
+        readEnqueueTask = Task { [previous = readEnqueueTask] in
+            await previous?.value
             for (tweetId, username) in marked {
                 await readQueue.enqueue(tweetId: tweetId, username: username)
             }
         }
+    }
+
+    /// 表示切替・再クエリの前に、投入待ちを含めて既読を DB へ書き切る (§8.2)。
+    /// これをしないと再クエリが read_state の古い状態を読み、既読が未読に戻って見える
+    func flushReadMarks() async {
+        await readEnqueueTask?.value
+        await readQueue?.flush()
     }
 
     /// 手動トグル (§5.2)。即時 DB 書込。
