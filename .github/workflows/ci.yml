@@ -33,12 +33,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # プリインストール版 SwiftLint (0.65.0 時点で確認) を使う。build より先に置いて fail-fast
+      # ランナーに SwiftLint は無いため、Releases のポータブル版をバージョン固定で
+      # 取得する (イメージ更新で新ルールが突然発火するのも防げる)。build より先に置いて fail-fast
       - name: SwiftLint
         working-directory: mac
         run: |
-          swiftlint version
-          swiftlint lint --strict --reporter github-actions-logging
+          curl -sSL -o /tmp/swiftlint.zip https://github.com/realm/SwiftLint/releases/download/0.65.0/portable_swiftlint.zip
+          unzip -q -o /tmp/swiftlint.zip -d /tmp/swiftlint
+          /tmp/swiftlint/swiftlint version
+          /tmp/swiftlint/swiftlint lint --strict --reporter github-actions-logging
 
       # デフォルトの Xcode 16.x は Swift 6.1 のため swift-tools-version 6.2 の
       # マニフェストを読めない。ランナー同梱の Xcode 26 系の最新を選ぶ

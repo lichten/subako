@@ -50,7 +50,7 @@ swift build         # デバッグビルド
 ## 静的解析・警告ポリシー
 
 ```sh
-brew install swiftlint   # 初回のみ (CI のプリインストール版は 0.65.0)
+brew install swiftlint   # 初回のみ (CI は 0.65.0 に固定)
 ./Scripts/lint.sh        # = swiftlint lint --strict
 ```
 
