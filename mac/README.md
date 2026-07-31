@@ -111,4 +111,25 @@ mac-port-notes §3)。
 - ページ読込に失敗したとき、Windows 版は未処理例外としてダイアログを出して終了するが、
   Mac 版はページングを止めずにリスト内へ「読み込みに失敗しました / 再試行」を出す
   (mac-port-notes §3 のとおり、クラウド同期由来の一時的な失敗が起こりうるため)。
-- 取得機能 (fetcher 連携) は実 API キーでの E2E 検証が未実施。
+- 検索バケットの「更新 (差分取得)...」はメニュー表記が "..." 付きだがダイアログを
+  出さず、上限 500 固定で即実行する (SidebarView.startUpdate)。表記と挙動の不一致。
+
+## 取得機能 (fetcher 連携) の準備
+
+取得はリポジトリルートの Python fetcher (`main.py`) を子プロセス起動する
+(docs/fetcher-cli.md)。API キーはアプリではなく **fetcher 側の `.env`** に置く:
+
+```sh
+cd <リポジトリルート>
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env    # SORSA_API_KEY を記入
+```
+
+アプリの設定画面で「fetcher の場所」にリポジトリルート、「Python パス」に
+`.venv/bin/python3` の**絶対パス**を指定する。GUI アプリはログインシェルの
+PATH を見ないため、venv を使うなら Python パスの明示が実質必須。
+なお `settings.json` の直接編集はアプリ起動中の保存で上書きされるため、
+設定は必ずアプリの設定画面から行うこと。
+
+実 API での E2E 検証は 2026-07-31 に実施済み (更新・バックフィル・検索・
+フォロー一覧・不足画像・中断・上限到達 exit=10・キー未設定ヒントの 8 経路)。
