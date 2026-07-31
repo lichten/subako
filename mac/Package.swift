@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 // SubakoCore は UI 非依存の共有契約層 (パーサ・DB・取込・fetcher 連携)。
