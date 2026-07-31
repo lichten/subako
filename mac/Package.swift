@@ -2,10 +2,13 @@
 import PackageDescription
 
 // 全ターゲット共通の厳格化設定:
-// Swift 7 で必須になる予定の upcoming feature を先行 opt-in する。
+// - Swift 7 で必須になる予定の upcoming feature を先行 opt-in
+// - 警告はエラー扱い。ただし deprecation は SDK 更新で突然増えるため警告のまま残す
 let strictSwiftSettings: [SwiftSetting] = [
     .enableUpcomingFeature("ExistentialAny"),          // SE-0335: 存在型に any を必須化
     .enableUpcomingFeature("MemberImportVisibility"),  // SE-0444: 暗黙の再エクスポート依存を禁止
+    .treatAllWarnings(as: .error),
+    .treatWarning("DeprecatedDeclaration", as: .warning),
 ]
 
 // SubakoCore は UI 非依存の共有契約層 (パーサ・DB・取込・fetcher 連携)。
