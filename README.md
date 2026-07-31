@@ -135,6 +135,16 @@ dotnet test viewer\TweetViewer.Tests\TweetViewer.Tests.csproj   # ビューア�
 `pytest` は偽クライアントを差し込むので API キーもネットワークも不要です。
 ビューアが起動中だと exe がロックされて `dotnet test` が失敗するので、先に終了してください。
 
+Mac 版 (要 Swift 6.2+ / Xcode 26 以降。SwiftLint は `brew install swiftlint`):
+
+```sh
+cd mac
+swift test           # ユニットテスト
+./Scripts/lint.sh    # SwiftLint (CI と同条件)
+```
+
+静的解析・警告の方針は [mac/README.md](mac/README.md) の「静的解析・警告ポリシー」を参照。
+
 疎通確認には `python probe.py <username>` (2 リクエスト消費、生レスポンスを
 `probe_output/` に保存) が使えます。
 

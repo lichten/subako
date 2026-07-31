@@ -34,15 +34,35 @@ mac/
 
 ## ビルド・テスト
 
+swift-tools-version 6.2 のため、ビルドには Swift 6.2+ (Xcode 26 以降) が必要。
+
 ```sh
 cd mac
 swift test          # SubakoCore のユニットテスト (CI と同じ)
 swift build         # デバッグビルド
+./Scripts/lint.sh   # SwiftLint (CI と同条件、警告も失敗扱い)
 ./Scripts/make-app.sh   # mac/dist/Subako.app を生成 (release + ad-hoc 署名)
 ```
 
 開発中は `swift run SubakoApp` でも起動できる。Xcode を使う場合は
 `mac/Package.swift` をそのまま開けばよい (xcodeproj は無い)。
+
+## 静的解析・警告ポリシー
+
+```sh
+brew install swiftlint   # 初回のみ (CI のプリインストール版は 0.65.0)
+./Scripts/lint.sh        # = swiftlint lint --strict
+```
+
+- 設定は `.swiftlint.yml` (テスト向けの緩和は `Tests/.swiftlint.yml`)。
+  CI (test-mac) では違反が 1 件でもあるとジョブが失敗する。
+  既存コード由来の既知の逸脱 (AppModel.swift の行数など) は
+  `// swiftlint:disable` コメントで理由付きで明示してあり、
+  新規の disable コメント追加は原則しない。
+- コンパイラ警告もエラー扱い (`Package.swift` の `treatAllWarnings`)。ただし
+  deprecation 警告だけは SDK 更新で突然増えるため警告のまま残している。
+- Swift 7 で必須になる予定の `ExistentialAny` / `MemberImportVisibility` を
+  先行有効化している。
 
 ## アプリケーションアイコン
 
