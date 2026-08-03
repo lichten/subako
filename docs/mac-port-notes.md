@@ -154,7 +154,7 @@ Mac 版の割り当て:
 
 | | Windows | Mac |
 |---|---|---|
-| 描画コード | `tools/icongen/Program.cs` (C# + WPF) | `mac/Sources/subako-icongen/IconGen.swift` |
+| 描画コード | `tools/icongen/Program.cs` (C# + WPF) | `mac/Sources/subako-icongen/main.swift` |
 | 生成物 (commit する) | `viewer/TweetViewer/subako.ico` | `mac/Resources/Subako.icns` |
 | 再生成 | `dotnet run --project tools/icongen -- <出力先>` | `mac/Scripts/make-icon.sh` |
 | 参照 | `.csproj` の `ApplicationIcon` | Info.plist の `CFBundleIconFile` |

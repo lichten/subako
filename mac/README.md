@@ -28,7 +28,8 @@ mac/
 ├── Sources/subako-smoke/    # 実データ疎通確認 CLI (mac-port-notes §6.3)
 ├── Tests/SubakoCoreTests/   # C# テスト (viewer/TweetViewer.Tests) からの移植
 ├── Sources/subako-icongen/  # アプリアイコンの描画 (tools/icongen の移植)
-├── Resources/Subako.icns    # 生成済みアイコン (make-icon.sh で再生成)
+├── Resources/               # Subako.icns (make-icon.sh で再生成) / Info.plist (Xcode 用)
+├── Subako.xcodeproj/        # Xcode で .app を実行・デバッグするためのプロジェクト
 └── Scripts/                 # make-app.sh (.app 組み立て) / make-icon.sh (アイコン)
 ```
 
@@ -44,8 +45,38 @@ swift build         # デバッグビルド
 ./Scripts/make-app.sh   # mac/dist/Subako.app を生成 (release + ad-hoc 署名)
 ```
 
-開発中は `swift run SubakoApp` でも起動できる。Xcode を使う場合は
-`mac/Package.swift` をそのまま開けばよい (xcodeproj は無い)。
+開発中は `swift run SubakoApp` でも起動できる。
+
+### Xcode で開発する
+
+`mac/Subako.xcodeproj` を開くと、Run で Info.plist・アイコン付きの Subako.app が
+ビルド・起動され、ブレークポイントや Instruments が使える。ソースは
+`Sources/SubakoApp` / `Sources/SubakoCore` を synchronized folder で共有するため、
+ファイルの追加・削除で pbxproj の編集は不要。`swift build` / `swift test` /
+make-app.sh のワークフローには影響しない (xcodeproj は SPM からは不可視)。
+
+SubakoCore は xcodeproj 内では静的ライブラリターゲットとしてビルドする。
+ローカルパッケージ参照にしない理由: Xcode はパッケージ依存を
+`-suppress-warnings` 付きでビルドするため、Package.swift の
+`treatAllWarnings` が生成する `-warnings-as-errors` と衝突してビルドが
+失敗する (Swift 6.3 で修正予定の既知の問題。swift-package-manager#9517)。
+SQLite は同じ理由を避けて swift-toolchain-sqlite をリモートパッケージ参照で
+直接リンクする (C ターゲットのみなので衝突しない)。
+
+- **fetcher 自動検出の注意**: Xcode の Run では実行バイナリが DerivedData 配下に
+  置かれるため、`Bundle.main.bundlePath` の祖先を遡るリポジトリ自動検出
+  (AppSettings) は失敗する。初回に設定画面で fetcher の場所と Python パスを
+  手動設定すれば `~/Library/Application Support/Subako/settings.json` に保存され、
+  make-app.sh 版とも共有される。
+- **二重管理箇所** (片方だけ変えないこと):
+  - Info.plist: `Resources/Info.plist` (Xcode) ⇔ `Scripts/make-app.sh` の heredoc。
+    バージョン更新時は make-app.sh の `VERSION` と Info.plist の
+    `CFBundleShortVersionString` / `CFBundleVersion` を揃える。
+  - 厳格化設定: `Package.swift` の `strictSwiftSettings` ⇔ pbxproj の target 設定
+    (`OTHER_SWIFT_FLAGS` + `SWIFT_UPCOMING_FEATURE_*`、Subako / SubakoCore の 2 ターゲット)。
+  - swift-toolchain-sqlite の依存宣言と pin: `mac/Package.swift` + `mac/Package.resolved` ⇔
+    pbxproj の XCRemoteSwiftPackageReference +
+    `Subako.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`。
 
 ## 静的解析・警告ポリシー
 
@@ -73,7 +104,7 @@ brew install swiftlint   # 初回のみ (CI は 0.65.0 に固定)
 ./Scripts/make-icon.sh   # Sources/subako-icongen で描画 → iconutil で .icns 化
 ```
 
-図形の定義は `Sources/subako-icongen/IconGen.swift`。**Windows 版
+図形の定義は `Sources/subako-icongen/main.swift`。**Windows 版
 (`tools/icongen/Program.cs`) と同一の比率にすること** — 片方だけ直すと
 両プラットフォームで見た目がずれる。詳細は docs/mac-port-notes.md §4.7。
 

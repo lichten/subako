@@ -16,3 +16,4 @@ venv/
 mac/.build/
 mac/dist/
 mac/.swiftpm/
+xcuserdata/

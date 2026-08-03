@@ -51,3 +51,12 @@ jobs:
       - name: Swift build + test (SubakoCore)
         working-directory: mac
         run: swift test
+
+      # xcodeproj は手書きのため、設定ドリフトやパッケージ参照の破損を CI で検知する。
+      # ad-hoc 署名 (CODE_SIGN_IDENTITY=-) なので証明書は不要
+      - name: Xcode project build (Subako.app)
+        working-directory: mac
+        run: >
+          xcodebuild -project Subako.xcodeproj -scheme Subako
+          -configuration Debug -destination "platform=macOS"
+          -derivedDataPath "$RUNNER_TEMP/DerivedData" build
