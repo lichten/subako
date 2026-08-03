@@ -61,6 +61,38 @@ import Testing
         #expect(ids(frames) == ["visible"])
     }
 
+    // --- 許容誤差 (±1pt)。SwiftUI の端数座標 (Retina で 0.5pt 刻み) 対策 ---
+
+    @Test func fractionalOverhangWithinToleranceIsMarked() {
+        #expect(ids([.init(id: "a", top: -0.5, height: 300)]) == ["a"])
+        #expect(ids([.init(id: "b", top: 500.5, height: 300)]) == ["b"])  // bottom 800.5
+    }
+
+    @Test func overhangExactlyAtToleranceIsMarked() {
+        #expect(ids([.init(id: "a", top: -1, height: 300)]) == ["a"])
+        #expect(ids([.init(id: "b", top: 501, height: 300)]) == ["b"])  // bottom 801
+    }
+
+    @Test func overhangBeyondToleranceIsNotMarked() {
+        #expect(ids([.init(id: "a", top: -1.5, height: 300)]).isEmpty)
+        #expect(ids([.init(id: "b", top: 501.5, height: 300)]).isEmpty)  // bottom 801.5
+    }
+
+    @Test func tallCardBottomFractionallyBelowViewportBottomIsMarked() {
+        // 下限で静止したときの端数ずれ (bottom 800.5) を取りこぼさない
+        #expect(ids([.init(id: "a", top: -399.5, height: 1200)]) == ["a"])
+    }
+
+    @Test func tallCardBottomFractionallyAboveViewportTopIsMarked() {
+        // bottom -0.5 — 通過済みなので既読側に倒す
+        #expect(ids([.init(id: "a", top: -1200.5, height: 1200)]) == ["a"])
+    }
+
+    @Test func tallClassificationStaysStrictAtExactViewportHeight() {
+        // height == viewport ちょうどは tall 扱いせず、完全表示規則で判定する
+        #expect(ids([.init(id: "a", top: -5, height: 800)]).isEmpty)
+    }
+
     @Test func mixedFramesKeepInputOrder() {
         let frames = [
             ScrollReadRule.Frame(id: "a", top: 0, height: 100),

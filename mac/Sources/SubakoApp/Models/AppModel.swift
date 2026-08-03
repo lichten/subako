@@ -1024,6 +1024,9 @@ final class AppModel {
         if let frame = currentWindowFrame {
             settings.windowFrame = frame
         }
+        // 投入待ち (readEnqueueTask) を書き切ってから閉じる (§8.2)。
+        // readQueue.shutdown() 内の flush は actor に届いた分しか書かない
+        await flushReadMarks()
         await readQueue?.shutdown()
         db?.checkpointAndClose()
         settings.save()

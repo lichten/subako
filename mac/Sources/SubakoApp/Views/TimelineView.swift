@@ -20,7 +20,12 @@ struct TimelineView: View {
                     .onGeometryChange(for: CGRect.self) { proxy in
                         proxy.frame(in: .scrollView)
                     } action: { frame in
-                        tracker.cardFrames[item.id] = frame
+                        let previous = tracker.cardFrames.updateValue(frame, forKey: item.id)
+                        // 画像デコード完了などで寸法が変わったとき (と初出現時) は
+                        // 静止判定をやり直す。位置だけの変化は onScrollGeometryChange が拾う
+                        if previous?.size != frame.size {
+                            restartReadTimer()
+                        }
                     }
                     .onDisappear {
                         // LazyVStack が破棄したカードの古い矩形を残さない
@@ -89,21 +94,21 @@ struct TimelineView: View {
     private func restartReadTimer() {
         guard !app.isReadOnly else { return }
         tracker.readTimer?.invalidate()
-        let height = tracker.viewportHeight
-        let frames = tracker.cardFrames
+        // スナップショットは取らない — 静止待ちの 300ms の間にも画像デコード完了や
+        // LazyVStack の実体化でレイアウトが変わるため、発火時点の最新値で判定する
         tracker.readTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
             Task { @MainActor in
-                markVisibleAsRead(viewportHeight: height, frames: frames)
+                markVisibleAsRead()
             }
         }
     }
 
     @MainActor
-    private func markVisibleAsRead(viewportHeight: CGFloat, frames: [String: CGRect]) {
+    private func markVisibleAsRead() {
         // frames はビューポート相対 (scrollView 座標系)。contentOffset は混ぜない
         let ids = ScrollReadRule.visibleIds(
-            viewportHeight: viewportHeight,
-            frames: frames.map {
+            viewportHeight: tracker.viewportHeight,
+            frames: tracker.cardFrames.map {
                 ScrollReadRule.Frame(id: $0.key, top: $0.value.minY, height: $0.value.height)
             })
         if !ids.isEmpty {

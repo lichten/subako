@@ -9,6 +9,10 @@ import Foundation
 /// SwiftUI の `proxy.frame(in: .scrollView)` と WPF の
 /// `TransformToAncestor(scrollViewer)` がこの座標系にあたる。
 /// スクロール量 (contentOffset) を混ぜてはいけない。
+///
+/// 規則 (§8.1) は C# と同一だが、Mac 側だけ境界比較に ±1pt の許容誤差を持つ。
+/// SwiftUI は Retina (2x) で 0.5pt 刻みの端数座標を生むため、厳密比較だと
+/// 最下端ぴったりのカードを取りこぼす (WPF はレイアウト丸めで整数座標のため不要)。
 public enum ScrollReadRule {
     /// 判定対象のカード 1 枚。
     public struct Frame: Sendable, Equatable {
@@ -30,13 +34,17 @@ public enum ScrollReadRule {
         return frames.filter { isVisible($0, viewportHeight: viewportHeight) }.map(\.id)
     }
 
+    /// 境界比較の許容誤差 (pt)。端数の吸収には十分大きく、「一部が隠れている」と
+    /// 視認できる量よりは十分小さい。高さの分類 (tall かどうか) には適用しない
+    static let tolerance: CGFloat = 1
+
     static func isVisible(_ frame: Frame, viewportHeight: CGFloat) -> Bool {
         let bottom = frame.top + frame.height
-        let fullyVisible = frame.top >= 0 && bottom <= viewportHeight
+        let fullyVisible = frame.top >= -tolerance && bottom <= viewportHeight + tolerance
         // 背の高いカードは完全表示になりえないので、下端が画面内へ入ったら既読扱い。
-        // 上へ流れ去ったもの (bottom < 0) は対象外。
+        // 上へ流れ去ったもの (bottom < -tolerance) は対象外。
         let tallItemPassed = frame.height > viewportHeight
-            && bottom <= viewportHeight && bottom >= 0
+            && bottom <= viewportHeight + tolerance && bottom >= -tolerance
         return fullyVisible || tallItemPassed
     }
 }
