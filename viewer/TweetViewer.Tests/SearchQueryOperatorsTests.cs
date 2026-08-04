@@ -71,4 +71,21 @@ public class SearchQueryOperatorsTests
         var (_, _, minFav) = SearchQueryOperators.Split("q min_faves:5 min_faves:20");
         Assert.Equal(20, minFav);
     }
+
+    /// <summary>
+    /// Python の has_period_operator / Swift の hasPeriodOperator と同一規則
+    /// (docs/trending-jp.md §10.3-2)。
+    /// </summary>
+    [Theory]
+    [InlineData("lang:ja since:2026-08-02_15:00:00_UTC", true)]
+    [InlineData("lang:ja until:2026-08-03", true)]
+    [InlineData("q since_time:1754146800", true)]
+    [InlineData("q until_time:1754233200", true)]
+    [InlineData("q SINCE:2026-08-02", true)]
+    [InlineData("(lang:ja -filter:retweets since:2026-08-02_15:00:00_UTC) min_faves:50000", true)]
+    [InlineData("スレスパ2 lang:ja", false)]
+    [InlineData("q min_faves:50000", false)]
+    [InlineData("q within_time:24h", false)]
+    public void HasPeriodOperator(string query, bool expected) =>
+        Assert.Equal(expected, SearchQueryOperators.HasPeriodOperator(query));
 }

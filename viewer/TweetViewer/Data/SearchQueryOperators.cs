@@ -15,6 +15,19 @@ public static partial class SearchQueryOperators
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
 
+    /// <summary>
+    /// since: / until: (および since_time: / until_time:) を含むか。
+    /// Python の sorsa_fetcher.fetcher.has_period_operator / Swift の
+    /// SearchQueryOperators.hasPeriodOperator と同一規則にすること — fetcher は
+    /// この条件でバックフィルを exit 1 拒否するので、ビューアは同じ判定で導線を
+    /// 出さないようにする (docs/trending-jp.md §10.3-2)。
+    /// </summary>
+    [GeneratedRegex(@"\b(?:since|until)(?:_time)?:", RegexOptions.IgnoreCase)]
+    private static partial Regex PeriodOperatorRegex();
+
+    public static bool HasPeriodOperator(string query) =>
+        PeriodOperatorRegex().IsMatch(query);
+
     public static string Compose(string baseQuery, long? minRetweets, long? minFaves)
     {
         var query = baseQuery.Trim();

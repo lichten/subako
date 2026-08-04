@@ -138,7 +138,12 @@
                                 <Grid.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="更新 (差分取得)..." Click="MenuSearchUpdate_Click" />
-                                        <MenuItem Header="過去期間を取得 (バックフィル)..." Click="MenuSearchBackfill_Click" />
+                                        <!-- 期間を絞ったクエリでは 30 日窓と競合して必ず 0 件になる
+                                             (fetcher も exit 1 で拒否する。docs/trending-jp.md §10.3-2) -->
+                                        <MenuItem Header="過去期間を取得 (バックフィル)..." Click="MenuSearchBackfill_Click"
+                                                  IsEnabled="{Binding IsPeriodScopedSearch, Converter={StaticResource InverseBool}}"
+                                                  ToolTipService.ShowOnDisabled="True"
+                                                  ToolTip="since: / until: を含むクエリでは実行できません (取得期間が二重に指定されるため)" />
                                         <MenuItem Header="不足画像を取得 (API 不使用)" Click="MenuFetchImages_Click" />
                                         <Separator />
                                         <MenuItem Header="タグ" SubmenuOpened="TagMenu_SubmenuOpened">

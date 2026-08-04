@@ -60,6 +60,31 @@ public sealed class SearchMetadataTests : IDisposable
         Assert.Equal("n", read.Value.Name);
     }
 
+    /// <summary>
+    /// order は name と違い null 指定で消さない。消すと fetcher の既定 latest に戻り、
+    /// popular で積んでいたバケットに latest の結果が混ざる (docs/trending-jp.md §10.3-1)。
+    /// </summary>
+    [Fact]
+    public void UpdateKeepsOrderWhenNotSpecified()
+    {
+        SearchMetadata.Write(_dir, "(lang:ja) min_faves:50000", "今日の話題 (日本)", order: "popular");
+        Assert.Equal("popular", SearchMetadata.TryRead(_dir)!.Value.Order);
+
+        // 編集ダイアログ経由の保存 (order を知らない呼び出し)
+        SearchMetadata.Write(_dir, "(lang:ja) min_faves:80000", "今日の話題 (日本)");
+
+        var read = SearchMetadata.TryRead(_dir);
+        Assert.Equal("(lang:ja) min_faves:80000", read!.Value.Query);
+        Assert.Equal("popular", read.Value.Order);
+    }
+
+    [Fact]
+    public void OrderIsNullWhenAbsent()
+    {
+        SearchMetadata.Write(_dir, "q", "n");
+        Assert.Null(SearchMetadata.TryRead(_dir)!.Value.Order);
+    }
+
     [Fact]
     public void TryReadMissingOrBrokenReturnsNull()
     {

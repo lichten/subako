@@ -788,9 +788,9 @@ public sealed partial class MainViewModel : ObservableObject
             var meta = SearchMetadata.TryRead(_db.UserDir(row.Username));
             var query = meta?.Query ?? row.Username["searches/".Length..];
             if (byId.Remove(row.Username, out var existing))
-                existing.ApplyCounts(row, query, meta?.Name);
+                existing.ApplyCounts(row, query, meta?.Name, meta?.Order);
             else
-                Searches.Add(new SearchItemViewModel(row, query, meta?.Name));
+                Searches.Add(new SearchItemViewModel(row, query, meta?.Name, meta?.Order));
         }
         foreach (var removed in byId.Values)
         {

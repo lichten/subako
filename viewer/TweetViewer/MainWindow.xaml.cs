@@ -401,7 +401,10 @@ public partial class MainWindow : Window
 
     private void MenuSearchBackfill_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { DataContext: SearchItemViewModel item } || Vm.IsFetching)
+        // メニュー側でも IsEnabled で塞いでいるが、期間演算子入りクエリのバックフィルは
+        // 再開状態を壊すため念のためここでも弾く (docs/trending-jp.md §10.3-2)
+        if (sender is not MenuItem { DataContext: SearchItemViewModel item } ||
+            Vm.IsFetching || item.IsPeriodScopedSearch)
             return;
         var dialog = new SearchBackfillDialog { Owner = this };
         if (dialog.ShowDialog() == true)
