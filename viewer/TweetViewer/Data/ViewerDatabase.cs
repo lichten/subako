@@ -88,6 +88,14 @@ public sealed class ViewerDatabase
     public void EnsureCreated()
     {
         using var conn = OpenConnection();
+        // 版チェックは DDL より前に行う。後にすると、将来 tweets の列を削除・改名した
+        // 版の DB に対して CREATE/ALTER が先に走り、分かりやすいメッセージではなく
+        // 生の "no such column" になってしまう (docs/trending-jp.md §10.2)。
+        // Mac 版は同一トランザクション内で判定してロールバックする。
+        var existing = TryReadSchemaVersion(conn);
+        if (existing > SchemaVersion)
+            throw new SchemaTooNewException(existing.Value, SchemaVersion);
+
         using (var wal = conn.CreateCommand())
         {
             wal.CommandText = "PRAGMA journal_mode = WAL;";
@@ -146,14 +154,7 @@ public sealed class ViewerDatabase
             """;
         cmd.ExecuteNonQuery();
 
-        using var ver = conn.CreateCommand();
-        ver.CommandText = "SELECT value FROM schema_meta WHERE key = 'schema_version'";
-        var stored = Convert.ToInt32((string)ver.ExecuteScalar()!);
-        if (stored > SchemaVersion)
-        {
-            throw new InvalidOperationException(
-                $"viewer.db のスキーマバージョン {stored} はこのアプリ (v{SchemaVersion}) より新しいため開けません。");
-        }
+        var stored = existing ?? SchemaVersion;
         // 逐次マイグレーション (派生データはリセット、users / read_state は保全)
         if (stored < 2)
             Migrate(conn, 2, """
@@ -200,6 +201,40 @@ public sealed class ViewerDatabase
             // DDL 変更なし。RT のカウント (いいね等) を RT元から拾うようパーサを
             // 変えたので、派生データを捨てて次回取込で作り直す (API 消費なし)。
             Migrate(conn, 7, "");
+        }
+    }
+
+    /// <summary>
+    /// WAL の内容を viewer.db 本体へ書き戻して -wal を切り詰める。終了時に呼ぶ。
+    /// クラウド同期 (Google Drive 等) は viewer.db / -wal / -shm をファイル単位で
+    /// 別々に同期するため、WAL を残したまま終了すると相手側が古いスナップショットを
+    /// 読む・不整合な組で同期される (docs/mac-port-notes.md §3)。
+    /// 他プロセスが読んでいる等で切り詰められなくても終了は妨げない。
+    /// </summary>
+    public void Checkpoint()
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+        cmd.ExecuteScalar();
+    }
+
+    /// <summary>
+    /// 既存 DB の schema_version。DB が新規 (schema_meta が無い / 行が無い) なら null。
+    /// DDL を一切実行しないこと — 版が新しすぎる DB を触らずに判定するのが目的。
+    /// </summary>
+    private static int? TryReadSchemaVersion(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT value FROM schema_meta WHERE key = 'schema_version'";
+        try
+        {
+            return cmd.ExecuteScalar() is string s && int.TryParse(s, out var v) ? v : null;
+        }
+        catch (SqliteException)
+        {
+            // schema_meta が無い DB (新規作成) では no such table になる
+            return null;
         }
     }
 

@@ -11,6 +11,7 @@ public partial class App : Application
 {
     private ReadMarkQueue? _readQueue;
     private AppLog? _log;
+    private ViewerDatabase? _db;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -43,7 +44,24 @@ public partial class App : Application
         settings.Save();
 
         var db = new ViewerDatabase(settings.EffectiveDataDir);
-        db.EnsureCreated();
+        try
+        {
+            db.EnsureCreated();
+            _db = db;   // 開けた DB だけ終了時のチェックポイント対象にする
+        }
+        catch (SchemaTooNewException ex)
+        {
+            // 共有データフォルダを新しい版のアプリが先に開いた場合。汎用の
+            // クラッシュダイアログではなく理由と対処を示す (docs/trending-jp.md §10.2)
+            _log?.WriteException("EnsureCreated", ex);
+            MessageBox.Show(
+                $"{ex.Message}\n\n" +
+                "Subako を最新版に更新するか、別のデータフォルダを指定してください。\n" +
+                $"データフォルダ: {settings.EffectiveDataDir}",
+                AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
 
         var users = new UserRepository(db);
         var tweets = new TweetRepository(db);
@@ -68,8 +86,28 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         FlushReadQueue();
+        CheckpointDatabase();
         _log?.Write("終了");
         base.OnExit(e);
+    }
+
+    /// <summary>
+    /// WAL を viewer.db 本体へ畳んでから終わる。クラウド同期下で -wal を残すと
+    /// 相手のマシンが古いスナップショットを読む (docs/mac-port-notes.md §3)。
+    /// 既読フラッシュの後に呼ぶこと (フラッシュ分も WAL に乗るため)。
+    /// </summary>
+    private void CheckpointDatabase()
+    {
+        try
+        {
+            _db?.Checkpoint();
+            _db = null;   // 二重実行防止 (クラッシュ後に OnExit も走るため)
+        }
+        catch (Exception ex)
+        {
+            // 切り詰められなくても終了は妨げない (次回起動時に SQLite が回復する)
+            _log?.WriteException("CheckpointDatabase", ex);
+        }
     }
 
     /// <summary>未書込の既読マークをフラッシュする。通常終了とクラッシュの両方から呼ばれる。</summary>
@@ -90,6 +128,7 @@ public partial class App : Application
     {
         _log?.WriteException("DispatcherUnhandledException", e.Exception);
         FlushReadQueue();
+        CheckpointDatabase();
         var open = MessageBox.Show(
             "予期しないエラーが発生したため終了します。\n\n" +
             $"{e.Exception.Message}\n\n" +
@@ -116,6 +155,7 @@ public partial class App : Application
         _log?.WriteException("AppDomain.UnhandledException",
             e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString()));
         FlushReadQueue();
+        CheckpointDatabase();
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)

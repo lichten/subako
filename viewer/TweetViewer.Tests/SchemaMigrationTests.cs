@@ -200,4 +200,64 @@ public sealed class SchemaMigrationTests : IDisposable
         count.CommandText = "SELECT COUNT(*) FROM tweets WHERE tweet_id = '1'";
         Assert.Equal(2L, count.ExecuteScalar());
     }
+
+    /// <summary>
+    /// 対応版より新しい DB は専用例外で拒否する (Mac 版と同じ扱い。
+    /// docs/trending-jp.md §10.2)。汎用例外だとアプリがクラッシュ扱いになる。
+    /// </summary>
+    [Fact]
+    public void SchemaNewerThanSupportedIsRejected()
+    {
+        CreateFutureDatabase(ViewerDatabase.SchemaVersion + 1);
+
+        var db = new ViewerDatabase(_dataDir);
+        var ex = Assert.Throws<SchemaTooNewException>(() => db.EnsureCreated());
+
+        Assert.Equal(ViewerDatabase.SchemaVersion + 1, ex.StoredVersion);
+        Assert.Equal(ViewerDatabase.SchemaVersion, ex.SupportedVersion);
+    }
+
+    /// <summary>
+    /// 版チェックは DDL より前。後だと、将来 tweets の列を削った版の DB に対して
+    /// CREATE/ALTER が先に走り "no such column" になる (docs/trending-jp.md §10.2)。
+    /// ここでは「拒否した DB に何も書き足していない」ことで順序を確かめる。
+    /// </summary>
+    [Fact]
+    public void SchemaTooNewIsDetectedBeforeAnyDdlRuns()
+    {
+        CreateFutureDatabase(ViewerDatabase.SchemaVersion + 1);
+
+        var db = new ViewerDatabase(_dataDir);
+        Assert.Throws<SchemaTooNewException>(() => db.EnsureCreated());
+        SqliteConnection.ClearAllPools();
+
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        // 未来版にしか無い列は残り、このアプリ版の DDL が作るテーブルは増えていない
+        cmd.CommandText = """
+            SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'table' AND name IN ('users', 'tags', 'user_tags', 'tweets')
+            """;
+        Assert.Equal(1L, cmd.ExecuteScalar());
+    }
+
+    /// <summary>schema_meta だけを持つ「未来版」の DB。tweets 等は意図的に作らない。</summary>
+    private void CreateFutureDatabase(int version)
+    {
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"""
+            CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO schema_meta(key, value) VALUES ('schema_version', '{version}');
+            CREATE TABLE users (
+              username TEXT PRIMARY KEY COLLATE NOCASE, display_name TEXT,
+              added_at TEXT NOT NULL, last_import_at TEXT,
+              jsonl_offset INTEGER NOT NULL DEFAULT 0
+            );
+            """;
+        cmd.ExecuteNonQuery();
+        SqliteConnection.ClearAllPools();
+    }
 }
