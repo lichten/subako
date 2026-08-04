@@ -17,12 +17,30 @@ public static partial class SearchSlug
 
     public static string From(string query)
     {
-        var baseName = UnsafeCharsRegex().Replace(query, "_").Trim('_');
-        if (baseName.Length > 40)
-            baseName = baseName[..40];
+        var baseName = TruncateToRunes(UnsafeCharsRegex().Replace(query, "_").Trim('_'), 40);
         if (baseName.Length == 0)
             baseName = "search";
         var hash = Convert.ToHexStringLower(SHA1.HashData(Encoding.UTF8.GetBytes(query)))[..8];
         return $"{baseName}-{hash}";
+    }
+
+    /// <summary>
+    /// 先頭 maxRunes 個のコードポイントまで切り詰める。
+    /// Python (str のスライス) / Swift (unicodeScalars) は**コードポイント単位**なので、
+    /// C# の string.Length (UTF-16 コードユニット) で切ると絵文字などの非 BMP 文字を
+    /// 含むクエリで別のフォルダ名が生成されてしまう。
+    /// </summary>
+    private static string TruncateToRunes(string value, int maxRunes)
+    {
+        var utf16Length = 0;
+        var taken = 0;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            if (taken == maxRunes)
+                return value[..utf16Length];   // サロゲートペアを割らない境界
+            utf16Length += rune.Utf16SequenceLength;
+            taken++;
+        }
+        return value;
     }
 }

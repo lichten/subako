@@ -12,6 +12,15 @@ import Testing
         (#"a/b\c:d*e?f"g<h>i|j k"#, "a_b_c_d_e_f_g_h_i_j_k-91149389"),
         // python: slugify_query('   ') — 空 slug は "search" にフォールバック
         ("   ", "search-088fb1a4"),
+        // 非 BMP 文字 (絵文字) の切詰め。コードポイント単位で 40 個
+        // python: slugify_query('🐦' * 45)
+        (String(repeating: "🐦", count: 45),
+         String(repeating: "🐦", count: 40) + "-51f091b1"),
+        // BMP と非 BMP の混在で境界がサロゲートペアに当たるケース
+        // python: slugify_query('あ' * 20 + '🐦' * 20 + 'い' * 10)
+        (String(repeating: "あ", count: 20) + String(repeating: "🐦", count: 20)
+            + String(repeating: "い", count: 10),
+         String(repeating: "あ", count: 20) + String(repeating: "🐦", count: 20) + "-bf1c6d5e"),
     ])
     func matchesPythonImplementation(query: String, expected: String) {
         #expect(SearchSlug.from(query) == expected)

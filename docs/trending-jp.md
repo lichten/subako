@@ -306,16 +306,19 @@ Python fetcher の 3 者が共有するため、片方だけの機能追加が�
 5. クエリは正準形で書く。`-min_faves:` は使わない。
 6. Python を変えたら Windows 版に同梱されている `main.py` も更新する。
 
-### 10.5 併せて見つかった既存の弱点 (本件のスコープ外)
+### 10.5 併せて見つかった既存の弱点 (すべて対応済み)
 
-- `App.xaml.cs` の `EnsureCreated()` に try/catch が無く、schema too new が
-  クラッシュ扱いになる。Mac 版と同じくアラート表示にすべき。
-- C# 側に「新しすぎる `schema_version`」のテストが無い
-  (Swift は `mac/Tests/SubakoCoreTests/SchemaMigrationTests.swift` にある)。
-- Windows は終了時に `PRAGMA wal_checkpoint(TRUNCATE)` を実行しない (Mac は実行する)。
-  クラウド同期下では最大のリスク ([mac-port-notes.md](mac-port-notes.md) §3)。
-- **slug の 40 字切詰めが C# だけ単位が違う。** C# は UTF-16 コードユニット
-  (`Data/SearchSlug.cs`)、Swift/Python はコードポイント。40 字を超え、かつ非 BMP 文字
-  (絵文字等) を含むクエリでは**同じクエリから別のフォルダ名が生成される**。
-  トレンドクエリは ASCII 演算子中心なので実害は無いが、共有契約
-  ([mac-port-notes.md](mac-port-notes.md) §2 の項目 6) の逸脱として記録しておく。
+- ~~`App.xaml.cs` の `EnsureCreated()` に try/catch が無く、schema too new が
+  クラッシュ扱いになる~~ → **対応済み**。専用の `Data/SchemaTooNewException.cs` を
+  導入し、`App.xaml.cs` が理由と対処を示すダイアログを出す。あわせて版チェックを
+  DDL の**前**に移した (§10.2 で指摘した「列削除版で生の no such column になる」
+  構造の解消)。
+- ~~C# 側に「新しすぎる `schema_version`」のテストが無い~~ → **対応済み**。
+  `viewer/TweetViewer.Tests/SchemaMigrationTests.cs` に
+  `SchemaNewerThanSupportedIsRejected` / `SchemaTooNewIsDetectedBeforeAnyDdlRuns`。
+- ~~Windows は終了時に `PRAGMA wal_checkpoint(TRUNCATE)` を実行しない~~ →
+  **対応済み**。`ViewerDatabase.Checkpoint()` を通常終了とクラッシュ経路の両方から呼ぶ。
+- ~~slug の 40 字切詰めが C# だけ単位が違う~~ → **対応済み**。
+  `Data/SearchSlug.cs` をコードポイント (Rune) 単位に変更し、Python 実出力を
+  期待値としたテストを C#/Swift 双方に追加した (共有契約
+  [mac-port-notes.md](mac-port-notes.md) §2 の項目 6)。
