@@ -30,6 +30,32 @@ _MIN_WINDOW_DAYS = 2
 # cursor 付きの空ページがこの回数連続したら異常とみなして打ち切る
 _MAX_CONSECUTIVE_EMPTY_PAGES = 3
 
+# /search-tweets の並び順。API 側の既定は "popular" だが、アーカイブ用途では
+# 時系列で漏れなく辿れる "latest" が正しいのでこちらを既定にする
+# (docs/trending-jp.md §1)。"popular" は「その日の話題」抽出用。
+DEFAULT_ORDER = "latest"
+SEARCH_ORDERS = ("latest", "popular")
+
+# 期間指定つきのクエリはバックフィルの30日窓と競合するため拒否する
+# (`(q since:X until:Y) since:A until:B` になり0件のまま完了扱いになる)
+_PERIOD_OPERATOR_RE = re.compile(r"\b(?:since|until)(?:_time)?:", re.IGNORECASE)
+
+
+def has_period_operator(query):
+    """クエリに since: / until: (および since_time: / until_time:) が含まれるか。"""
+    return bool(_PERIOD_OPERATOR_RE.search(query or ""))
+
+
+class PeriodQueryBackfillError(Exception):
+    """since:/until: を含むクエリにバックフィルを指示された(窓指定と競合する)。"""
+
+    def __init__(self, query):
+        super().__init__(
+            "クエリに since: / until: が含まれるためバックフィルできません "
+            f"(30日窓の期間指定と競合します): {query}"
+        )
+        self.query = query
+
 
 class RequestBudgetExhausted(Exception):
     """--max-requests のリクエスト予算を使い切った(進捗は保存済み・再実行で再開可)。"""
@@ -61,13 +87,15 @@ def parse_created_at(value):
 
 class TweetFetcher:
     def __init__(self, client, storage, username, downloader=None, max_pages=None,
-                 max_requests=None):
+                 max_requests=None, order=DEFAULT_ORDER):
         self.client = client
         self.storage = storage
         self.username = username
         self.downloader = downloader
         self.max_pages = max_pages
         self.max_requests = max_requests
+        # /search-tweets の並び順。バックフィルはユーザー検索と共用のためインスタンス属性で持つ
+        self.order = order or DEFAULT_ORDER
         self.total_new = 0
 
     def _check_budget(self):
@@ -187,22 +215,42 @@ class TweetFetcher:
 
         - update=True: 常に最新から差分取得 (非空ページ全件既知で停止)
         - backfill=True: 初回ページングを完走した後、検索カーソルの終端より
-          古い期間を since/until 窓で backfill_since (既定 2014-01-01) まで補完
+          古い期間を since/until 窓で backfill_since (既定 2014-01-01) まで補完。
+          クエリ自体が since:/until: を含む場合は競合するため拒否する
         - 指定なし: 初回は cursor 保存つき全ページング (再開可)、完了後は差分
+
+        並び順は self.order (既定 "latest")。"popular" にすると X の「話題」タブ
+        相当の関連度順になる (docs/trending-jp.md)。クエリと同じくカーソルの
+        意味を変えるため、変更を検知したら取得状態をリセットする。
         """
         state = self.storage.load_state()
-        if state.get("query") not in (None, query):
+        # 並び順もカーソルの意味を変えるため、クエリと同じ扱いでリセット対象にする。
+        # - 新規バケット (query キーすら無い) はリセットするものが無いので黙って通す
+        # - order キーが無い既存バケットは "latest" とみなす。さもないと既存の検索が
+        #   全部この変更の初回実行でリセットされてしまう
+        is_new_bucket = state.get("query") is None
+        order_changed = (
+            not is_new_bucket and state.get("order", DEFAULT_ORDER) != self.order)
+        if state.get("query") not in (None, query) or order_changed:
             # クエリ変更: 旧クエリの結果空間に対する進捗は無効なのでリセットする。
             # 取得済みツイートは seen_ids の重複排除で保持される
-            logger.warning("クエリが変更されたため検索の取得状態をリセットします (取得済みツイートは保持)")
+            logger.warning(
+                "%sが変更されたため検索の取得状態をリセットします (取得済みツイートは保持)",
+                "並び順" if order_changed else "クエリ",
+            )
             for key in ("search_cursor", "search_done", "backfill_done_windows"):
                 state.pop(key, None)
         state["query"] = query
+        state["order"] = self.order
         self.storage.save_state(state)
         if update:
             self._search_update(query)
             return
         if backfill:
+            if has_period_operator(query):
+                # 窓指定と競合し、0件のまま backfill_done_windows に「完了」と
+                # 記録されて再開状態が壊れるため、実行せずに落とす
+                raise PeriodQueryBackfillError(query)
             if not state.get("search_done"):
                 self._search_initial(query, state)
             start = backfill_since or datetime(2014, 1, 1, tzinfo=timezone.utc)
@@ -224,7 +272,7 @@ class TweetFetcher:
                 logger.info("--max-pages 上限 (%d) に達したので中断します", self.max_pages)
                 break
             self._check_budget()
-            resp = self.client.search_tweets(query, cursor=cursor)
+            resp = self.client.search_tweets(query, cursor=cursor, order=self.order)
             tweets = resp.get("tweets") or []
             page += 1
             self._handle_page(tweets)
@@ -263,7 +311,7 @@ class TweetFetcher:
                 logger.info("--max-pages 上限 (%d) に達したので中断します", self.max_pages)
                 break
             self._check_budget()
-            resp = self.client.search_tweets(query, cursor=cursor)
+            resp = self.client.search_tweets(query, cursor=cursor, order=self.order)
             tweets = resp.get("tweets") or []
             page += 1
             new_tweets = self._handle_page(tweets)
@@ -369,7 +417,7 @@ class TweetFetcher:
         window_count = 0
         while True:
             self._check_budget()
-            resp = self.client.search_tweets(query, cursor=cursor)
+            resp = self.client.search_tweets(query, cursor=cursor, order=self.order)
             tweets = resp.get("tweets") or []
             window_count += len(tweets)
             self._handle_page(tweets)

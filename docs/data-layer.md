@@ -32,7 +32,9 @@ data/
 (`data/_trash/<username>/`、検索は `data/_trash/searches/<slug>/`)。
 
 - 自動登録 (`RegisterExistingDataDirsAsync` / `RegisterExistingSearchDirsAsync`) は
-  `data/` 直下と `data/searches/` 直下しか走査しないため、**`_trash` 配下は
+  `data/` 直下と `data/searches/` 直下しか走査せず、判定条件は
+  **「そのディレクトリ直下に `tweets.jsonl` があること」だけ**。`_trash/` 自身の直下には
+  `tweets.jsonl` が無い (実体は `_trash/<username>/tweets.jsonl`) ため、**`_trash` 配下は
   アーカイブとして認識されない**。DB 行だけ消してフォルダを残すと次回起動で
   復活してしまうので、移動が必須。
 - フォルダを元の位置へ戻せば次回起動時に再登録され、`read_state` を消していないので
@@ -57,7 +59,10 @@ data/
 - **登録される users 行はデータフォルダを持たない**。`data/<username>/` は
   実際に取得するときに fetcher が作る。取込側は `tweets.jsonl` 不在を
   正常系として扱うこと。
-- `_` 始まりなので `data/` 直下の自動登録では拾われない (§1.6 と同じ理由)。
+- 直下に `tweets.jsonl` が無いので `data/` 直下の自動登録では拾われない
+  (§1.6 と同じ理由。**`_` 始まりかどうかは判定に使っていない** — 逆に言えば
+  `data/` 直下に `tweets.jsonl` を持つディレクトリを作れば、名前によらず
+  ユーザーとして登録されてしまう)。
   **派生でも正データでもない中間ファイル**なので、いつ消してもよい
   (消すと再登録に再取得が必要になるだけ)。
 - **`/follows` はページングの終端を `next_cursor: "0"` (文字列) で表す**。null でも
@@ -80,14 +85,20 @@ data/
   C# `TweetViewer.Data.SearchSlug.From` で同一に保つこと):
   不正文字と空白の連続 (`\ / : * ? " < > | \s`) を `_` に置換 → 前後の `_` を除去 →
   40 字に切詰め (空なら `search`) → `-` + クエリ原文 UTF-8 の SHA1 先頭 8 hex。
-- **search.json**: `{"query": "<クエリ原文>", "name": "<任意の表示名>"?, "created_at": "<ISO 8601>"}`。
+- **search.json**: `{"query": "<クエリ原文>", "name": "<任意の表示名>"?,
+  "order": "latest"|"popular"?, "created_at": "<ISO 8601>"}`。
   書き手は fetcher (初回作成・`--search` 実行時のクエリ同期) と
   ビューア (クエリ変更・名称設定)。いずれも**他キーを保持する read-modify-write** で
   更新すること。表示ラベルは `name` → `query` → フォルダ名の順でフォールバック。
+  - **`order`** は `/search-tweets` の並び順。省略時は `latest`。fetcher が
+    `--order` 未指定時にここから読むため、**ビューアは `order` を保持するだけでよく、
+    取得時に渡す必要はない**。これがあるので「話題順で作ったバケットを別の OS の
+    ビューアで更新したら時系列に戻る」事故が起きない
+    ([trending-jp.md](trending-jp.md) §10.3-1)。
 - **クエリ変更** (取得済みツイートを残したまま条件変更):
   - slug (フォルダ名 = バケット ID) は**不変の ID** であり、変更後はクエリの
     SHA1 と一致しなくなるが無害 (取得は常に `--search-name` で明示指定)。
-  - fetcher は `state.json` 内の `query` と実行クエリの不一致を検知すると、
+  - fetcher は `state.json` 内の `query` (および `order`) と実行時の値の不一致を検知すると、
     `search_cursor` / `search_done` / `backfill_done_windows` を**自動リセット**する
     (旧クエリの結果空間に対する進捗のため)。tweets.jsonl は ID 重複排除で保持され、
     次回取得は新クエリの初回ページングとして未知分のみ追記する。
@@ -112,7 +123,9 @@ data/
     検索カーソルの終端より古い期間を `(query) since:.. until:..` の30日窓で
     最古保存ツイートから `--backfill-since` (既定 2014-01-01) まで遡って補完。
     完了済み窓はユーザーバックフィルと同じ `backfill_done_windows` に記録され再開可。
-    クエリ自体に `since:` / `until:` を含む検索は窓指定と競合するため非推奨。
+    **クエリ自体に `since:` / `until:` を含む検索は窓指定と競合するため、fetcher が
+    exit 1 で拒否する** (0 件のまま「完了」と記録され再開状態が壊れるため)。
+    期間を絞った検索は 1 回の取得で完結するのでバックフィルは不要。
 - ビューアはバケットを `users.username = "searches/<slug>"` の仮想行として登録し、
   ユーザー一覧とは別の「検索」セクションに表示する (§4.2 注記)。
 

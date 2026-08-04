@@ -4,6 +4,7 @@
     python main.py <username> [--output-dir data] [--max-pages N]
                    [--skip-images] [--backfill] [--fresh] [--rps 5]
     python main.py --search "<query>" [--search-name NAME] [--max-requests N]
+                   [--order latest|popular]
     python main.py <username> --images-only          # API を使わず画像だけ補完
     python main.py --search-name NAME --images-only  # 検索バケットの画像だけ補完
 
@@ -11,6 +12,9 @@
     スペース区切り = AND / OR (大文字) / "フレーズ" / (グループ) / -除外 /
     lang:ja / min_faves:N / min_retweets:N / from:user / since: / until:
 例: (sts2 OR "slay the spire 2" OR スレスパ2) lang:ja
+
+--order popular は X の「話題」タブ相当の関連度順。「その日の話題」の抽出手順は
+docs/trending-jp.md を参照。
 """
 
 import argparse
@@ -25,7 +29,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from sorsa_fetcher.client import SorsaClient, SorsaApiError
-from sorsa_fetcher.fetcher import RequestBudgetExhausted, TweetFetcher, slugify_query
+from sorsa_fetcher.fetcher import (
+    DEFAULT_ORDER,
+    PeriodQueryBackfillError,
+    RequestBudgetExhausted,
+    SEARCH_ORDERS,
+    TweetFetcher,
+    slugify_query,
+)
 from sorsa_fetcher.media import MediaDownloader
 from sorsa_fetcher.storage import Storage
 
@@ -214,6 +225,11 @@ def main():
     parser.add_argument("--backfill-since", default="2014-01-01", metavar="YYYY-MM-DD",
                         help="検索バックフィルで過去へ遡る開始日 (既定: 2014-01-01。"
                              "X の検索インデックスは 2014 年以前をほぼ返さない)")
+    parser.add_argument("--order", choices=SEARCH_ORDERS, default=None,
+                        help="検索の並び順 (--search 用)。latest = 時系列 / "
+                             "popular = X の「話題」タブ相当。省略時は search.json の "
+                             "order キー、それも無ければ latest。指定すると "
+                             "search.json に保存され、以後は省略しても引き継がれる")
     args = parser.parse_args()
 
     if args.followings:
@@ -277,11 +293,20 @@ def main():
                 "検索クエリを変更します: %r → %r (取得済みツイートは保持)",
                 saved_query, args.search,
             )
+        # 並び順は CLI → search.json → 既定 の順で解決する。ビューアは --order を
+        # 渡さないので、バケットに一度書いておけば以後どのプラットフォームから
+        # 更新しても引き継がれる (docs/trending-jp.md §10.3)
+        order = args.order or meta.get("order") or DEFAULT_ORDER
+        if args.order:
+            meta["order"] = args.order
         meta["query"] = args.search
         meta.setdefault("created_at", datetime.now(timezone.utc).isoformat())
         meta_path.write_text(
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     else:
+        order = DEFAULT_ORDER
+        if args.order:
+            logger.warning("--order は --search 指定時のみ有効です。無視します")
         storage = Storage(args.output_dir, args.username.lstrip("@"))
 
     if args.fresh and not args.search:
@@ -294,7 +319,7 @@ def main():
     fetcher = TweetFetcher(client, storage,
                            None if args.search else args.username.lstrip("@"),
                            downloader=downloader, max_pages=args.max_pages,
-                           max_requests=args.max_requests)
+                           max_requests=args.max_requests, order=order)
 
     try:
         if args.search:
@@ -320,6 +345,11 @@ def main():
             args.max_requests,
         )
         return 10
+    except PeriodQueryBackfillError as exc:
+        logger.error("%s", exc)
+        logger.error(
+            "期間を絞ったクエリは 1 回の取得で完結します。--backfill を外して実行してください")
+        return 1
     except SorsaApiError as exc:
         logger.error("API エラーで中断しました: %s", exc)
         logger.error("再実行すれば途中から再開できます")

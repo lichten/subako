@@ -37,10 +37,16 @@ fetcher をそのまま使える。データ側の規約(JSONL・state.json・�
 - 上限を課すときは末尾に `--max-requests N`。
 - `--search-name <slug>` は**常に明示する**(slug はバケットの不変 ID。クエリ変更後に
   slug を再計算すると別バケットになってしまう。data-layer.md §1.5)。
+- **検索の並び順 `--order` はビューアからは渡さない**。fetcher が `search.json` の
+  `order` キーを読むため(解決順は `--order` → `search.json` の `order` → `latest`)、
+  バケットに一度書いておけばどのプラットフォームから更新しても引き継がれる。
+  これにより「話題順で作ったバケットを他方の OS で更新したら時系列に戻る」事故を、
+  ビューア側の改修なしに防いでいる(trending-jp.md §10.3)。
 
 このほか CLI 手動実行用のオプションがある(ビューアは使わない):
 `--max-pages N`(ページ数上限)/ `--skip-images`(画像 DL しない)/
-`--fresh`(カーソルを無視して最初から)/ `--rps F`(リクエストレート、既定 5.0)。
+`--fresh`(カーソルを無視して最初から)/ `--rps F`(リクエストレート、既定 5.0)/
+`--order latest|popular`(検索の並び順。指定すると `search.json` に保存される)。
 
 ## 3. exit code 契約
 
@@ -81,7 +87,7 @@ fetcher 私有のファイルで、**ビューアは読み書きしない**(data
 | キー | 内容 |
 |---|---|
 | `timeline_cursor` / `timeline_done` | タイムライン全ページングの再開カーソル / 完走フラグ(終端でカーソルは `""`) |
-| `search_cursor` / `search_done` / `query` | 検索バケット用。`query` が実行クエリと不一致だと検索系進捗を自動リセット |
+| `search_cursor` / `search_done` / `query` / `order` | 検索バケット用。`query` または `order` が実行時の値と不一致だと検索系進捗を自動リセット(`order` キーが無い既存バケットは `latest` とみなすのでリセットされない) |
 | `backfill_done_windows` | 完了済みバックフィル窓の配列(`"YYYY-MM-DD..YYYY-MM-DD"` 形式、30 日窓) |
 | `failed_images` | 画像 DL 失敗の記録(`{tweet_id, url, error}` の配列) |
 
@@ -95,7 +101,7 @@ fetcher 私有のファイルで、**ビューアは読み書きしない**(data
 | `user_info(username)` | GET | `/info` | プロフィール(`statuses_count` 等)。完全性チェック用 |
 | `follows(username, cursor)` | GET | `/follows` | フォロー中一覧(1 ページ最大 200 件)。終端カーソルは `"0"`(文字列)— data-layer.md §1.7 の罠を参照 |
 | `user_tweets(username, cursor)` | POST | `/user-tweets` | ユーザータイムライン(1 ページ約 20 件) |
-| `search_tweets(query, cursor, order)` | POST | `/search-tweets` | キーワード検索(`order="latest"`) |
+| `search_tweets(query, cursor, order)` | POST | `/search-tweets` | キーワード検索。`order` は `latest`(既定)/ `popular`。API 側の既定は `"popular"` だがアーカイブ用途では時系列が正しいため fetcher は `latest` を既定にする — [trending-jp.md](trending-jp.md) §1 |
 
 - レスポンスのトップレベルは `{"tweets": [...], "next_cursor": "..."}`(user-tweets 実測)。
   ツイートオブジェクトのフィールドは data-layer.md §2。
@@ -111,3 +117,9 @@ fetcher 私有のファイルで、**ビューアは読み書きしない**(data
   → 約 $0.10 / 1,000 ツイート。新規アカウントには 100 リクエストの無料枠。
 - 参考: Starter プランの月間割当は 10,100 リクエスト(実運用時の確認値。
   最新のプラン内容は [Sorsa のダッシュボード](https://api.sorsa.io) を参照)。
+- `order="popular"` を使った「その日の話題」の抽出設計は
+  [trending-jp.md](trending-jp.md)。`--order` と `search.json` の `order` キーは
+  実装済み(§2)。`GET /trends` は未使用(同 §8 のフォールバック案)。
+- **`--backfill` はクエリに `since:` / `until:` が含まれていると exit 1 で拒否する**。
+  30 日窓が `(q since:X until:Y) since:A until:B` を作って 0 件のまま完了扱いになり、
+  `backfill_done_windows` に嘘の進捗が残るため(trending-jp.md §10.3-2)。
