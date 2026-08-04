@@ -11,6 +11,18 @@ public enum SearchQueryOperators {
     private static let whitespaceRegex =
         try! NSRegularExpression(pattern: #"\s+"#)
 
+    /// since: / until: (および since_time: / until_time:) を含むか。
+    /// Python の `sorsa_fetcher.fetcher.has_period_operator` と同一規則にすること —
+    /// fetcher はこの条件でバックフィルを exit 1 拒否するので、ビューアは同じ判定で
+    /// 導線を出さないようにする (docs/trending-jp.md §10.3-2)。
+    private static let periodOperatorRegex =
+        try! NSRegularExpression(pattern: #"\b(?:since|until)(?:_time)?:"#, options: [.caseInsensitive])
+
+    public static func hasPeriodOperator(_ query: String) -> Bool {
+        let range = NSRange(location: 0, length: (query as NSString).length)
+        return periodOperatorRegex.firstMatch(in: query, range: range) != nil
+    }
+
     public static func compose(baseQuery: String, minRetweets: Int64?, minFaves: Int64?) -> String {
         let query = baseQuery.trimmingCharacters(in: .whitespaces)
         if minRetweets == nil && minFaves == nil {

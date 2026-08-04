@@ -101,6 +101,25 @@ func makeTempDir() throws -> String {
         #expect(SearchMetadata.tryRead(bucketDir: dir)?.name == nil)
     }
 
+    /// order は fetcher が `--order` 未指定時に読む値。ビューアが通常のクエリ編集で
+    /// 落とすと次回取得が latest に戻ってしまう (docs/trending-jp.md §10.3-1)。
+    @Test func orderの読み書きと保持() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+
+        #expect(SearchMetadata.tryRead(bucketDir: dir)?.order == nil)
+
+        try SearchMetadata.write(
+            bucketDir: dir, query: "q", name: nil, order: TrendingQuery.order)
+        #expect(SearchMetadata.tryRead(bucketDir: dir)?.order == "popular")
+
+        // order を渡さない書き込み (= 通常のクエリ編集) は既存の order を消さない
+        try SearchMetadata.write(bucketDir: dir, query: "q2", name: "名前")
+        let info = try #require(SearchMetadata.tryRead(bucketDir: dir))
+        #expect(info.query == "q2")
+        #expect(info.order == "popular")
+    }
+
     @Test func 破損や欠落はnil() throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: dir) }

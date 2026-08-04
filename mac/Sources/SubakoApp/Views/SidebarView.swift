@@ -107,6 +107,14 @@ struct SidebarView: View {
                 .help("フォロー中を一括登録")
                 .disabled(app.isFetching || app.isReadOnly)
 
+                Button {
+                    sheet = .trending
+                } label: {
+                    Image(systemName: "flame")
+                }
+                .help("今日の話題を取得 (日本)")
+                .disabled(app.isFetching || app.isReadOnly)
+
                 Spacer()
             }
         }
@@ -185,10 +193,14 @@ struct SidebarView: View {
             startUpdate(item)
         }
         .disabled(app.isFetching || app.isReadOnly)
-        Button(item.isSearch ? "過去期間を取得 (バックフィル)..." : "全期間を取得 (バックフィル)...") {
-            sheet = item.isSearch ? .searchBackfill(item) : .backfill(item)
+        // 期間を絞った検索 (「今日の話題」等) はバックフィルの30日窓と競合し、
+        // fetcher も exit 1 で拒否するので導線ごと出さない (docs/trending-jp.md §10.3-2)
+        if !item.isPeriodScopedSearch {
+            Button(item.isSearch ? "過去期間を取得 (バックフィル)..." : "全期間を取得 (バックフィル)...") {
+                sheet = item.isSearch ? .searchBackfill(item) : .backfill(item)
+            }
+            .disabled(app.isFetching || app.isReadOnly)
         }
-        .disabled(app.isFetching || app.isReadOnly)
         Button("不足画像を取得 (API 不使用)") {
             app.startFetch(username: item.id, mode: .imagesOnly, maxRequests: nil)
         }

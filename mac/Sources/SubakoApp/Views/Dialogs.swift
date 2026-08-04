@@ -751,3 +751,101 @@ struct ImportFollowingsSheet: View {
         }
     }
 }
+
+/// 「今日の話題 (日本)」の取得 (docs/trending-jp.md)。対象日といいね数下限から
+/// クエリを自動生成し、order=popular で固定バケット searches/trending-jp に貯める。
+struct TrendingSheet: View {
+    @Bindable var app: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var day = TrendingQuery.TargetDay.yesterday
+    @State private var minFaves = String(TrendingQuery.TargetDay.yesterday.suggestedMinFaves)
+    @State private var maxRequests = "20"
+    @State private var error: String?
+
+    private let now = Date()
+
+    private var targetDateLabel: String {
+        TrendingQuery.jstDateLabel(TrendingQuery.date(for: day, now: now))
+    }
+
+    private var previewQuery: String {
+        TrendingQuery.build(day: day, minFaves: Int64(minFaves) ?? 0, now: now)
+    }
+
+    private var isValid: Bool {
+        (Int64(minFaves) ?? 0) > 0 && (Int(maxRequests) ?? 0) > 0
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        Text("生成されるクエリ (並び順: \(TrendingQuery.order))")
+            .font(.system(size: 11)).foregroundStyle(Theme.auxTextLight)
+        Text(previewQuery)
+            .font(.system(size: 11, design: .monospaced))
+            .textSelection(.enabled)
+            .frame(maxWidth: 420, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("今日の話題を取得 (日本)").font(.headline)
+            Grid(alignment: .leading, verticalSpacing: 8) {
+                GridRow {
+                    Text("対象日")
+                    Picker("", selection: $day) {
+                        Text("前日 (JST)").tag(TrendingQuery.TargetDay.yesterday)
+                        Text("当日 (0 時から現在まで)").tag(TrendingQuery.TargetDay.today)
+                    }
+                    .labelsHidden().frame(width: 220)
+                }
+                GridRow {
+                    Text("対象日 (JST)")
+                    Text(targetDateLabel).foregroundStyle(Theme.auxTextLight)
+                }
+                GridRow {
+                    Text("いいね数 ≥")
+                    TextField("", text: $minFaves).frame(width: 120)
+                }
+                GridRow {
+                    Text("最大リクエスト数")
+                    TextField("", text: $maxRequests).frame(width: 120)
+                }
+            }
+            preview
+            Text("結果は「\(TrendingQuery.defaultName)」に貯まります。対象日ごとにクエリが変わるため、"
+                + "毎回あらためて先頭から取得します")
+                .font(.system(size: 11)).foregroundStyle(Theme.auxTextLight)
+            if let error {
+                Text(error).foregroundStyle(.red).font(.system(size: 12))
+            }
+            HStack {
+                Spacer()
+                Button("キャンセル") { dismiss() }
+                Button("取得") {
+                    guard let faves = Int64(minFaves), let limit = Int(maxRequests) else { return }
+                    guard app.ensureFetcherConfigured() else {
+                        dismiss()
+                        return
+                    }
+                    Task {
+                        do {
+                            try await app.fetchTrending(
+                                day: day, minFaves: faves, maxRequests: limit, now: now)
+                            dismiss()
+                        } catch {
+                            self.error = error.localizedDescription
+                        }
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!isValid)
+            }
+        }
+        .padding(20)
+        .onChange(of: day) { _, newDay in
+            // 当日は経過時間が短くいいねが伸びきっていないので推奨値を下げる (§3.1)
+            minFaves = String(newDay.suggestedMinFaves)
+        }
+    }
+}

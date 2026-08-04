@@ -8,6 +8,11 @@ public enum SearchMetadata {
         public let query: String
         public let name: String?
         public let createdAt: String?
+        /// `/search-tweets` の並び順 ("latest" / "popular")。省略時 nil = latest 相当。
+        /// **ビューアは取得時に渡さない** — fetcher が `--order` 未指定時にこの値を
+        /// 読むので、保持するだけでプラットフォームを跨いで引き継がれる
+        /// (docs/data-layer.md §1.5、docs/trending-jp.md §10.3-1)。
+        public let order: String?
     }
 
     private static func path(_ bucketDir: String) -> String {
@@ -23,12 +28,18 @@ public enum SearchMetadata {
         return Info(
             query: query,
             name: nonEmptyString(root["name"]),
-            createdAt: nonEmptyString(root["created_at"]))
+            createdAt: nonEmptyString(root["created_at"]),
+            order: nonEmptyString(root["order"]))
     }
 
     /// query / name を差し替えて保存する。既存ファイルの他キー (created_at 等) は保持。
     /// name = nil はキー削除 (名称未設定 = クエリ表示)。新規・破損時は作り直す。
-    public static func write(bucketDir: String, query: String, name: String?) throws {
+    ///
+    /// order は **nil のとき既存キーを消さない** — name と違い、通常のクエリ編集経路で
+    /// 並び順を落としてはいけない (落とすと次回取得が latest に戻る)。
+    public static func write(
+        bucketDir: String, query: String, name: String?, order: String? = nil
+    ) throws {
         var root: [String: Any] = [:]
         if let data = FileManager.default.contents(atPath: path(bucketDir)),
            let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -39,6 +50,9 @@ public enum SearchMetadata {
             root["name"] = name
         } else {
             root.removeValue(forKey: "name")
+        }
+        if let order, !order.isEmpty {
+            root["order"] = order
         }
         if root["created_at"] == nil {
             root["created_at"] = DateParsers.utcNow()

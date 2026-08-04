@@ -40,10 +40,20 @@ struct ArchiveItem: Identifiable, Equatable {
     /// 検索: search.json の name → query → フォルダ名 (§4.2)
     var searchLabel: String?
     var searchQuery: String?
+    /// 検索: search.json の order (nil = latest 相当)。取得時には渡さず、
+    /// バックフィル導線の抑止判定にだけ使う (docs/trending-jp.md §10.3-2)
+    var searchOrder: String?
     /// 楽観更新される未読数
     var unread: Int64
 
     var id: String { row.username }
+
+    /// 期間を絞った「話題」バケットか。バックフィルは 30 日窓と競合するため
+    /// (fetcher も exit 1 で拒否する) 導線を出さない。
+    var isPeriodScopedSearch: Bool {
+        guard isSearch, let searchQuery else { return false }
+        return SearchQueryOperators.hasPeriodOperator(searchQuery)
+    }
 
     var displayLabel: String {
         if isSearch {
@@ -238,7 +248,8 @@ final class AppModel {
         users = userRows.map { row in
             ArchiveItem(
                 row: row, tagIds: assignments[row.username.lowercased()] ?? [],
-                isSearch: false, searchLabel: nil, searchQuery: nil, unread: row.unreadCount)
+                isSearch: false, searchLabel: nil, searchQuery: nil, searchOrder: nil,
+                unread: row.unreadCount)
         }
         searches = searchRows.map { row in
             let info = SearchMetadata.tryRead(bucketDir: db.userDir(row.username))
@@ -246,7 +257,7 @@ final class AppModel {
                 row: row, tagIds: assignments[row.username.lowercased()] ?? [],
                 isSearch: true,
                 searchLabel: info.map { $0.name ?? $0.query },
-                searchQuery: info?.query, unread: row.unreadCount)
+                searchQuery: info?.query, searchOrder: info?.order, unread: row.unreadCount)
         }
     }
 
@@ -768,6 +779,29 @@ final class AppModel {
         try SearchMetadata.write(
             bucketDir: db.userDir(bucketId), query: query,
             name: (name?.isEmpty == false) ? name : nil)
+        try await userRepo.add(bucketId)
+        try await reloadLists()
+        select(.search(bucketId))
+        startFetch(username: bucketId, mode: .search, maxRequests: maxRequests, searchQuery: query)
+    }
+
+    /// 「今日の話題 (日本)」の取得 (docs/trending-jp.md)。
+    ///
+    /// createSearch との違いは 2 点だけ:
+    /// - slug をクエリから導出せず固定値にする (クエリに日付が入るため、
+    ///   毎日別バケットになってしまう)
+    /// - search.json に `order: popular` を書く。fetcher が `--order` 未指定時に
+    ///   これを読むので、Windows 版から更新しても話題順が維持される (§10.3-1)
+    func fetchTrending(
+        day: TrendingQuery.TargetDay, minFaves: Int64, maxRequests: Int, now: Date = Date()
+    ) async throws {
+        guard let db, let userRepo else { throw AppError("DB 未接続") }
+        guard minFaves > 0 else { throw AppError("いいね数の下限は正の整数で入力してください") }
+        let query = TrendingQuery.build(day: day, minFaves: minFaves, now: now)
+        let bucketId = SearchBuckets.bucketId(slug: TrendingQuery.bucketSlug)
+        try SearchMetadata.write(
+            bucketDir: db.userDir(bucketId), query: query,
+            name: TrendingQuery.defaultName, order: TrendingQuery.order)
         try await userRepo.add(bucketId)
         try await reloadLists()
         select(.search(bucketId))

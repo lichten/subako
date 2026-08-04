@@ -6,6 +6,7 @@ enum SheetKind: Identifiable {
     case firstRun
     case addUser
     case addSearch
+    case trending
     case searchEdit(ArchiveItem)
     case addTag(ArchiveItem)
     case manageTags
@@ -22,6 +23,7 @@ enum SheetKind: Identifiable {
         case .firstRun: return "firstRun"
         case .addUser: return "addUser"
         case .addSearch: return "addSearch"
+        case .trending: return "trending"
         case .searchEdit(let i): return "searchEdit:\(i.id)"
         case .addTag(let i): return "addTag:\(i.id)"
         case .manageTags: return "manageTags"
@@ -304,6 +306,8 @@ struct MainWindow: View {
             AddUserSheet(app: app)
         case .addSearch:
             SearchSheet(app: app)
+        case .trending:
+            TrendingSheet(app: app)
         case .searchEdit(let item):
             SearchEditSheet(app: app, item: item)
         case .addTag(let item):
