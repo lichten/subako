@@ -13,7 +13,7 @@
     <!-- アイコンの元データは tools/icongen (再実行で同じ .ico を生成できる) -->
     <ApplicationIcon>subako.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Product>Subako</Product>
     <Authors>Lichten</Authors>
     <Copyright>© 2026 Lichten</Copyright>

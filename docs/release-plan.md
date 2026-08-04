@@ -38,7 +38,10 @@
 決定時の確認チェックリスト:
 
 - [x] **X/Twitter の商標に抵触しない名前にする** — Subako は「Tweet」「Twitter」を含まない
-- [ ] 同名の既存 OSS・アプリの最終確認 (GitHub 検索は済。窓の杜 / Vector / Microsoft Store は public 化前に再確認)
+- [x] 同名の既存 OSS・アプリの最終確認 → **失効**。「public 化前に再確認」という条件付きの
+  項目だったが、フェーズ 5 で public 化を実施済み (2026-07-28)。GitHub 検索の結果で
+  判断して公開したため、この時点での再確認は行わない。Microsoft Store への出品を
+  検討する段階になったら (付録 B) その時点で改めて調べる
 - [x] GitHub のリポジトリ名として使える表記か → `subako` で可
 - [x] 名前の波及範囲を把握した上で決める → フェーズ 3-2 で実施済み
 
@@ -169,7 +172,7 @@
 - [x] `NicoThumbnail.cs` の User-Agent → `AppInfo.UserAgent` (アセンブリバージョン連動、例 "Subako/0.1") (2026-07-28)
 - [x] `%APPDATA%\TweetViewer` → `%APPDATA%\Subako` + 旧フォルダからの設定移行 (`AppSettings.MigrateLegacySettings`。コピー方式なので旧バージョンに戻しても設定は残る) (2026-07-28)
 - [x] アセンブリ名 → `Subako` (exe 名のみ変更。名前空間・フォルダ名は churn を避けて `TweetViewer` のまま据え置くと決定し、csproj にコメントで明記) (2026-07-28)
-- [ ] リポジトリ名 (フェーズ 5 で実施)
+- [x] リポジトリ名 → フェーズ 5 で `subako` に変更済み (2026-07-28)
 - [x] テストの一時フォルダ名 `TweetViewerTests` → `SubakoTests` (2026-07-28)
 
 ### 3-3. アセンブリメタデータとバージョン番号 (S)
@@ -191,7 +194,10 @@
 - [x] self-contained + `PublishSingleFile` の publish profile (`Properties/PublishProfiles/win-x64.pubxml`) を作成 (2026-07-28)
 - [x] pdb を配布物から除外 (`DebugType=none`。出力に *.pdb ゼロを確認) (2026-07-28)
 - [x] fetcher 一式の同梱を csproj の `BundleFetcherAndNotices` ターゲットで実装 (main.py / sorsa_fetcher の *.py / requirements.txt / .env.example / LICENSE / THIRD-PARTY-NOTICES.md)。出力は単一 Subako.exe (約 138MB) + 同梱ファイルのみで `runtimes\` フォルダ無し (2026-07-28)
-- [ ] **クリーンな Windows (Windows Sandbox) で起動確認** — 開発機は .NET SDK も Python も入っているため、素の環境での検証が必須
+- [ ] **クリーンな Windows (Windows Sandbox) で起動確認** — 開発機は .NET SDK も Python も入っているため、素の環境での検証が必須。
+  確認項目: ①初回セットアップ → データフォルダ選択で閲覧できる ②取得系の入口が
+  案内つきガードで止まり `Shutdown(1)` しない ③同梱 `main.py --help` に `--order` がある
+  (v0.1.0 の成果物は `--order` 追加前のため、**検証は v0.1.1 の成果物で行うこと**)
 
 ### 4-2. インストーラー (M)
 
@@ -231,10 +237,25 @@
 - [x] 初回リリースタグ `v0.1.0` を push し、Actions がドラフト Release を作成 —
   subako-0.1.0-win-x64.zip (59MB) + subako-setup-0.1.0.exe (44MB) の添付を確認 (2026-07-28)。
   **ドラフトの公開は 4-1 (クリーン環境起動) と 4-2 (インストーラー実機) の検証後に手動で行う**
-  (両検証はこのドラフトの生成物をそのまま使えばよい)
 - [x] README にバッジ (CI / ライセンス / 最新リリース) (2026-07-28)
 - [x] Issue テンプレート (バージョン記入 + ログ添付の案内) (2026-07-28)
 - [x] CONTRIBUTING.md は当面作らないと判断 (Issue テンプレートで足りる。PR が来るようになったら再検討) (2026-07-28)
+
+### 初回公開のやり直し — v0.1.1 で出す (2026-08-04)
+
+v0.1.0 のドラフトは**検証前のまま塩漬けになっており、かつ成果物が古い**:
+`main.py` はその後 `--order` 対応が入っており、Windows の publish には
+`BundleFetcherAndNotices` で `main.py` が同梱されるため、v0.1.0 の zip / インストーラーは
+**`order` を読めない fetcher を抱えている** (docs/trending-jp.md §10.4-6 の違反)。
+
+- [x] コード側の残作業を完了 (schema ガード / wal_checkpoint / SearchSlug 単位 /
+  画像ビューアの URL / 検索の order 保持 / 今日の話題の取得) (2026-08-04)
+- [x] `TweetViewer.csproj` の `Version` と `installer/subako.iss` の `MyAppVersion` を
+  `0.1.1` に更新 (2026-08-04)
+- [ ] `v0.1.1` タグを push し、Actions のドラフト Release を生成
+- [ ] 4-1 (クリーン環境起動) を **v0.1.1 の成果物で**実施
+- [ ] 4-2 (インストーラー実機) を **v0.1.1 の成果物で**実施
+- [ ] v0.1.1 ドラフトを公開し、v0.1.0 のドラフトは削除する
 
 ---
 
