@@ -1,0 +1,66 @@
+<Window x:Class="TweetViewer.Views.TrendingDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="今日の話題を取得 (日本)" Width="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        WindowStyle="ToolWindow">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="対象日:" VerticalAlignment="Center" />
+            <RadioButton x:Name="YesterdayRadio" Content="前日 (JST)" Margin="10,0,0,0"
+                         VerticalAlignment="Center" IsChecked="True"
+                         Checked="TargetDay_Changed"
+                         ToolTip="投稿から 24 時間以上経っていいね数が安定しており、件数・順位が再現します" />
+            <RadioButton x:Name="TodayRadio" Content="当日 (0 時から現在まで)" Margin="14,0,0,0"
+                         VerticalAlignment="Center" Checked="TargetDay_Changed"
+                         ToolTip="速報性はありますが、取得時刻によって件数が大きく変わります" />
+            <TextBlock x:Name="TargetDateText" VerticalAlignment="Center" Margin="14,0,0,0"
+                       Foreground="#666" FontSize="12" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="いいね数 ≥" VerticalAlignment="Center" />
+            <TextBox x:Name="MinFavesBox" Width="90" Margin="6,0,0,0" FontSize="14"
+                     VerticalContentAlignment="Center" TextChanged="Input_Changed" />
+            <TextBlock Text="最大リクエスト数:" VerticalAlignment="Center" Margin="20,0,0,0" />
+            <TextBox x:Name="MaxRequestsBox" Width="70" Margin="6,0,0,0" FontSize="14"
+                     Text="20" VerticalContentAlignment="Center" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="2" TextWrapping="Wrap" Foreground="#666" FontSize="12"
+                   Margin="0,6,0,0">
+            「話題」の閾値です。丸一日なら 50,000〜100,000 で上位 20〜100 件になります。
+            当日進行中はいいねが伸びきっていないため 1/5 程度に下げてください。
+            1リクエスト ≈ 20件。
+        </TextBlock>
+
+        <TextBlock Grid.Row="3" Text="生成されるクエリ (並び順: popular):"
+                   Margin="0,12,0,0" FontSize="12" Foreground="#666" />
+        <TextBox x:Name="PreviewBox" Grid.Row="4" Margin="0,4,0,0"
+                 FontFamily="Consolas" FontSize="12" TextWrapping="Wrap"
+                 IsReadOnly="True" Background="#F4F4F6" BorderThickness="0"
+                 Padding="6" />
+
+        <TextBlock Grid.Row="5" TextWrapping="Wrap" Foreground="#666" FontSize="12"
+                   Margin="0,8,0,0">
+            結果は「今日の話題 (日本)」に貯まります。対象日ごとにクエリが変わるため、
+            毎回あらためて先頭から取得します。
+        </TextBlock>
+
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,14,0,0">
+            <Button Content="取得" Width="90" IsDefault="True" Click="Ok_Click" />
+            <Button Content="キャンセル" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

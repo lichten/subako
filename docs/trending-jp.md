@@ -193,11 +193,16 @@ curl -s https://api.sorsa.io/v3/search-tweets \
 同一ツイートのいいね数が数十秒差の 2 リクエストで 27,714 → 27,759 と変化した。
 **カウントはライブ値**であり、取得時刻に依存する (§3.1)。
 
-## 10. クロスプラットフォーム影響 (Mac 版に実装した場合)
+## 10. クロスプラットフォーム影響
 
 `viewer.db` / `tweets.jsonl` / `search.json` は Windows 版 (C#)・Mac 版 (Swift)・
 Python fetcher の 3 者が共有するため、片方だけの機能追加が他方に波及しうる。
-本章は「この機能を Mac 版に実装したとき Windows 版に何が起きるか」の調査結果。
+本章は「この機能を片方に実装したときもう片方に何が起きるか」の調査結果。
+
+**現状: Mac 版・Windows 版の両方に実装済み** (Windows は
+`viewer/TweetViewer/Models/TrendingQuery.cs` + `Views/TrendingDialog.xaml`、
+サイドバー「検索」ヘッダの 🔥 ボタン)。クエリ生成は両実装で 1 バイト一致させてあり、
+テストで固定値を突き合わせている。
 
 結論: **§10.4 のルールを守れば実害は無い**。守らない場合、`schema_version` の
 変更だけは **Windows 版が起動できなくなる**一発アウトになる。
@@ -237,8 +242,9 @@ Python fetcher の 3 者が共有するため、片方だけの機能追加が�
 同時起動は元から不可 ([mac-port-notes.md](mac-port-notes.md) §3: クラウド同期下では
 `viewer.db` / `-wal` / `-shm` が不整合になる瞬間がある)。トレンド取得を足しても
 この前提は変わらないが、「Mac で毎日取得する」運用にするなら **Windows を閉じてから**。
-加えて Windows は終了時に `wal_checkpoint` を実行しないため、Mac の閲覧専用モード
-(`mode=ro&immutable=1`) は WAL を無視して**古いスナップショットを黙って読む**。
+~~加えて Windows は終了時に `wal_checkpoint` を実行しないため、Mac の閲覧専用モード
+(`mode=ro&immutable=1`) は WAL を無視して古いスナップショットを黙って読む。~~
+→ **解消済み** (§10.5)。Windows も終了時に `wal_checkpoint(TRUNCATE)` を実行する。
 
 ### 10.3 静かにずれるもの (データは壊れないが挙動が変わる)
 
@@ -271,7 +277,9 @@ Python fetcher の 3 者が共有するため、片方だけの機能追加が�
    `since:`/`until:` を持つトレンドクエリでは `(q since:X until:Y) since:A until:B` に
    なり、**結果ゼロのまま `backfill_done_windows` に「完了」と記録されていた**。
    → **対策 (実装済み)**: fetcher が期間演算子入りクエリのバックフィルを exit 1 で
-   拒否する。ビューア側でメニューを無効化するのはその上の親切機能。§7-2 と同じ。
+   拒否する。加えて **Windows / Mac の両ビューアがメニューを無効化する**
+   (`SearchQueryOperators.HasPeriodOperator` / `hasPeriodOperator`。判定規則は
+   Python の `has_period_operator` と同一)。§7-2 と同じ。
 
 3. **編集ダイアログの往復でクエリ文字列が変わる。** `SearchQueryOperators` の
    `Split`/`Compose` は `min_faves:` / `min_retweets:` だけを抜き出し、残り全部を
@@ -280,8 +288,10 @@ Python fetcher の 3 者が共有するため、片方だけの機能追加が�
    だけで `(lang:ja -filter:retweets since:...) min_faves:50000` に化ける。
    意味は同じだが**文字列が変わる**ため、fetcher が「クエリ変更」と見なして
    `search_cursor` / `search_done` / `backfill_done_windows` をリセットする。
-   → 対策: Mac が書くクエリを最初から**正準形**
-   `(<その他すべての演算子>) min_retweets:N min_faves:M` にしておけば往復で不変。
+   → **対策 (実装済み)**: 生成するクエリを最初から**正準形**
+   `(<その他すべての演算子>) min_retweets:N min_faves:M` にしてある (両実装の
+   `TrendingQuery` が `Compose` を通して組み立てる)。往復で不変であることは
+   両実装のテスト (`編集ダイアログの往復で文字列が変わらない`) が担保する。
    - `-min_faves:5` (否定形) と引用符内の `min_faves:` は**本当に壊れる**
      (`q -min_faves:5` → `(q -) min_faves:5` となり否定が消える)。使わないこと。
 

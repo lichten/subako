@@ -831,6 +831,25 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// 「今日の話題 (日本)」の取得準備 (docs/trending-jp.md)。
+    /// StartApiSearchAsync との違いは 2 点だけ:
+    /// <list type="bullet">
+    /// <item>slug をクエリから導出せず固定値にする (クエリに日付が入るため、
+    /// 導出すると毎日別バケットになってしまう)</item>
+    /// <item>search.json に order: popular を書く。fetcher が --order 未指定時に
+    /// これを読むので、Mac 版から更新しても話題順が維持される (§10.3-1)</item>
+    /// </list>
+    /// </summary>
+    public async Task<string> StartTrendingAsync(string query)
+    {
+        await _users.AddAsync(TrendingQuery.BucketId);
+        SearchMetadata.Write(_db.UserDir(TrendingQuery.BucketId), query,
+            TrendingQuery.DefaultName, TrendingQuery.Order);
+        await RefreshSearchesAsync();
+        return TrendingQuery.BucketId;
+    }
+
+    /// <summary>
     /// アーカイブを DB から削除し、フォルダを削除 (deleteFiles) または _trash へ退避する。
     /// 戻り値は失敗理由 (成功時 null)。フォルダが残ると次回起動の自動登録で復活するため、
     /// 呼び出し側は失敗を必ずユーザーに伝えること。

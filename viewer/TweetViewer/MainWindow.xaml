@@ -125,6 +125,9 @@
                 <DockPanel DockPanel.Dock="Top" Margin="8,4">
                     <Button DockPanel.Dock="Right" Content="＋" Width="28" Height="28"
                             ToolTip="X 全体をキーワード検索して保存" Click="AddSearch_Click" />
+                    <!-- 日本語圏でその日話題になったツイート (docs/trending-jp.md) -->
+                    <Button DockPanel.Dock="Right" Content="🔥" Width="28" Height="28" Margin="0,0,4,0"
+                            ToolTip="今日の話題 (日本) を取得します" Click="AddTrending_Click" />
                     <TextBlock Text="検索" FontWeight="Bold" VerticalAlignment="Center" />
                 </DockPanel>
                 <ListBox ItemsSource="{Binding SearchesView}"

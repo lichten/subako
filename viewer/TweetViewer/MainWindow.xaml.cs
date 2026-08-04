@@ -389,6 +389,18 @@ public partial class MainWindow : Window
         StartFetch(bucketId, FetchMode.Search, dialog.MaxRequests, finalQuery);
     }
 
+    private async void AddTrending_Click(object sender, RoutedEventArgs e)
+    {
+        // AddSearch_Click と同じ理由で、バケットを作る前に fetcher 未設定を弾く
+        if (Vm.IsFetching || !EnsureFetcherConfigured())
+            return;
+        var dialog = new TrendingDialog { Owner = this };
+        if (dialog.ShowDialog() != true)
+            return;
+        var bucketId = await Vm.StartTrendingAsync(dialog.Query);
+        StartFetch(bucketId, FetchMode.Search, dialog.MaxRequests, dialog.Query);
+    }
+
     private void MenuSearchUpdate_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { DataContext: SearchItemViewModel item } || Vm.IsFetching)

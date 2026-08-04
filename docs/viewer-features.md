@@ -380,6 +380,39 @@ CLI 契約(引数・exit code・ログ書式)は [fetcher-cli.md](fetcher-cli.md
 - **取得実行中は編集不可**。
 - (参考) `Views/SearchEditDialog.xaml(.cs)`, `ViewModels/MainViewModel.cs` (`UpdateSearchAsync`)
 
+### 9.4.5 今日の話題 (日本) の取得
+
+サイドバー「検索」ヘッダの 🔥 ボタン。日本語圏でその日話題になったツイートを
+`order: popular` で取る専用導線(設計と実測は trending-jp.md)。
+
+- 入力: ①対象日(**前日 (JST)** / 当日 0 時から現在まで)②`いいね数 ≥`
+  ③最大リクエスト数(既定 20)。対象日を切り替えると推奨閾値も入れ替わる
+  (前日 50,000 / 当日 10,000 — 当日は経過時間が短くいいねが伸びきっていないため)。
+- **生成されるクエリを等幅でそのまま表示する**。何が投げられるか隠さない。
+- §9.3 との違いは 2 点だけ:
+  - slug をクエリから導出せず **`trending-jp` 固定**。クエリに日付が入るため、
+    導出すると毎日別バケットになってしまう(slug は不変 ID — data-layer.md §1.5)。
+  - `search.json` に `order: popular` を書く。**ビューアは `--order` を渡さない** —
+    fetcher が未指定時にこの値を読むので、Windows / Mac どちらから更新しても
+    話題順が維持される(trending-jp.md §10.3-1)。
+- クエリは `SearchQueryOperators.Compose` の正準形で出す。§9.4 の編集ダイアログで
+  開いて保存しても文字列が変わらず、fetcher のカーソルリセットが起きない。
+- 期間演算子を含むので、このバケットでは検索バックフィルの導線が無効になる(§9.4.6)。
+- (参考) `Views/TrendingDialog.xaml(.cs)`, `Models/TrendingQuery.cs`,
+  `ViewModels/MainViewModel.cs` (`StartTrendingAsync`)
+
+### 9.4.6 期間指定クエリのバックフィル抑止
+
+`since:` / `until:`(`since_time:` / `until_time:` も)を含むクエリのバケットでは
+「過去期間を取得 (バックフィル)」を**無効化**する。バックフィルは 30 日窓を後付けするため
+`(q since:X until:Y) since:A until:B` になって必ず 0 件になり、しかもそれが「完了」と
+記録されて再開状態が壊れる。fetcher 側も同じ判定で exit 1 拒否する。
+
+判定規則は C# / Swift / Python の 3 実装で同一(`\b(?:since|until)(?:_time)?:`、
+大文字小文字無視)。
+- (参考) `Data/SearchQueryOperators.cs` (`HasPeriodOperator`),
+  `ViewModels/SearchItemViewModel.cs` (`IsPeriodScopedSearch`)
+
 ### 9.5 取得ログウィンドウ
 
 - **開始時には表示しない**。実行中はステータスバーの「取得中 — ログを表示」リンクで開ける。
@@ -398,13 +431,14 @@ CLI 契約(引数・exit code・ログ書式)は [fetcher-cli.md](fetcher-cli.md
 | 検索の差分更新 | 最大リクエスト数(バックフィルと同ダイアログのタイトル違い) | 500 |
 | 検索バックフィル | 遡る開始日(`YYYY-MM-DD`)+ 最大リクエスト数 | 2014-01-01 / 500 |
 | 新規検索 | §9.3 の 4 項目 | 上限 50 |
+| 今日の話題 (日本) | §9.4.5 の 3 項目 | 前日 / 50,000 / 上限 20 |
 | 表示中をすべて更新 | 合計リクエスト上限 | 100 |
 | フォロー中一括登録 | §4.7 の 4 項目 | 上限 50 |
 
 いずれも上限は正の整数のみ受け付ける。「上限に達しても安全に中断され、取得済み分は保存される。
 再実行で続きから再開する」旨を案内する(フォロー一覧のみ再開不可 — fetcher-cli.md §3)。
 - (参考) `Views/BackfillDialog.xaml(.cs)`, `Views/SearchBackfillDialog.xaml(.cs)`,
-  `Views/UpdateAllDialog.xaml(.cs)`
+  `Views/UpdateAllDialog.xaml(.cs)`, `Views/TrendingDialog.xaml(.cs)`
 
 ### 9.7 結果メッセージと環境不備ヒント
 
