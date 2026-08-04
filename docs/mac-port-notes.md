@@ -174,10 +174,9 @@ Mac 固有の注意:
 
 ## 5. Windows 版の既知の課題(新実装では最初から回避)
 
-- **画像ビューアの「ブラウザで開く」**: アーカイブ名から無条件に
-  `https://x.com/<name>/status/<id>` を組むため、検索バケット由来では壊れた URL になる。
-  タイムライン側の規則(author 不明なら `https://x.com/i/web/status/<id>`)に統一すること
-  (viewer-features.md §6.2)。
+- ~~**画像ビューアの「ブラウザで開く」**~~ → **解消済み**。両実装とも URL 生成を
+  1 箇所 (`Services/TweetUrl.cs` / `SubakoCore/Text/TweetURL.swift`) に集約し、
+  author 不明なら `https://x.com/i/web/status/<id>` を使う(viewer-features.md §6.2)。
 - **固定サイズダイアログ**: Windows 版はダイアログ 8 個が固定サイズで、文言変更・翻訳で
   レイアウトが破綻する設計負債が記録されている(release-plan.md 付録 B)。
   最初から内容依存サイズにする。

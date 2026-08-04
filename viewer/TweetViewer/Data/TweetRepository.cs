@@ -14,7 +14,7 @@ public sealed record TweetPage(
 
 public sealed record MediaPageRow(
     string TweetId, int Idx, string Ext, long SortKey, long IdInt,
-    string FullText, string CreatedAtUtc, string Username);
+    string FullText, string CreatedAtUtc, string Username, string? AuthorUsername);
 
 public sealed class TweetRepository
 {
@@ -266,7 +266,7 @@ public sealed class TweetRepository
             cmd.CommandText = usernames.Count == 1
                 ? $"""
                   SELECT m.tweet_id, m.idx, m.ext, t.sort_key, t.id_int,
-                         t.full_text, t.created_at_utc, t.username
+                         t.full_text, t.created_at_utc, t.username, t.author_username
                   FROM tweet_media m
                   JOIN tweets t ON t.tweet_id = m.tweet_id
                   WHERE t.username = $u0
@@ -277,7 +277,7 @@ public sealed class TweetRepository
                 : $"""
                   SELECT * FROM (
                       SELECT m.tweet_id, m.idx, m.ext, t.sort_key, t.id_int,
-                             t.full_text, t.created_at_utc, t.username,
+                             t.full_text, t.created_at_utc, t.username, t.author_username,
                              ROW_NUMBER() OVER (
                                  PARTITION BY m.tweet_id, m.idx
                                  ORDER BY (t.username LIKE 'searches/%'), t.username) AS rn
@@ -312,7 +312,8 @@ public sealed class TweetRepository
                     IdInt: reader.GetInt64(4),
                     FullText: reader.GetString(5),
                     CreatedAtUtc: reader.GetString(6),
-                    Username: reader.GetString(7)));
+                    Username: reader.GetString(7),
+                    AuthorUsername: reader.IsDBNull(8) ? null : reader.GetString(8)));
             }
             return rows;
         }, ct);

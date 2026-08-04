@@ -57,6 +57,6 @@ public partial class MediaViewerWindow : Window
     private void OpenInBrowser_Click(object sender, RoutedEventArgs e)
     {
         var item = _items[_index];
-        Browser.OpenUrl($"https://x.com/{item.Username}/status/{item.TweetId}");
+        Browser.OpenUrl(TweetUrl.Status(item.TweetId, item.Username, item.AuthorUsername));
     }
 }

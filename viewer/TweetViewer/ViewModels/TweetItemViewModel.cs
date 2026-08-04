@@ -209,15 +209,8 @@ public sealed partial class TweetItemViewModel : ObservableObject
     private Task ToggleRead() => _owner.ToggleReadAsync(this);
 
     [RelayCommand]
-    private void OpenInBrowser()
-    {
-        // RT/引用でも X 側が id で正規ツイートへリダイレクトする。
-        // 検索バケット (Username = searches/<slug>) では投稿者不明時に id 直リンク形式を使う
-        var user = Row.AuthorUsername ?? Row.Username;
-        Browser.OpenUrl(user.Contains('/')
-            ? $"https://x.com/i/web/status/{Row.TweetId}"
-            : $"https://x.com/{user}/status/{Row.TweetId}");
-    }
+    private void OpenInBrowser() =>
+        Browser.OpenUrl(TweetUrl.Status(Row.TweetId, Row.Username, Row.AuthorUsername));
 
     /// <summary>既読化(スクロール検知から)。二重呼び出しは owner 側で無視。</summary>
     public void MarkReadFromScroll() => _owner.MarkSeen(this);

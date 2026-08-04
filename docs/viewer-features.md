@@ -270,10 +270,12 @@ fetcher の場所(`main.py` のあるフォルダ)が未設定でも、閲覧機
 - `◀` `▶` ボタンと ←/→ キーで前後の画像へ移動(移動範囲は開いた時点のロード済み一覧)。
 - 下部に本文(高さ制限つき・省略記号)+ `yyyy-MM-dd HH:mm   (i/N)` +
   `ブラウザで開く` / `閉じる`(Esc)。
-- **既知の課題**: Windows 版の「ブラウザで開く」は `https://x.com/<archive名>/status/<id>` を
-  無条件に組むため、検索バケット由来(archive 名が `searches/<slug>`)では壊れた URL になる。
-  新実装ではタイムライン側と同じ規則(§5.2 の `/i/web/status/` フォールバック)に揃えること。
-- (参考) `Views/MediaViewerWindow.xaml(.cs)`
+- `ブラウザで開く` の URL 規則はタイムライン側 (§5.2) と共通。両方が
+  `Services/TweetUrl.cs` (Mac 版は `SubakoCore/Text/TweetURL.swift`) の 1 実装を使う。
+  かつては画像ビューアだけが `https://x.com/<archive名>/status/<id>` を無条件に
+  組んでいて、検索バケット由来 (archive 名が `searches/<slug>`) では壊れた URL に
+  なっていた。
+- (参考) `Views/MediaViewerWindow.xaml(.cs)`, `Services/TweetUrl.cs`
 
 ## 7. フィルタ・並び順
 

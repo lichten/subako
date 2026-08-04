@@ -11,7 +11,10 @@ namespace TweetViewer.ViewModels;
 public sealed class MediaItemViewModel
 {
     public required string TweetId { get; init; }
+    /// <summary>アーカイブ名。検索バケットでは "searches/&lt;slug&gt;" が入る。</summary>
     public required string Username { get; init; }
+    /// <summary>実投稿者 (JSONL の user 由来)。「ブラウザで開く」の URL 決定に使う。</summary>
+    public string? AuthorUsername { get; init; }
     public string? LocalPath { get; init; }
     public required string FullText { get; init; }
     public required string CreatedAtUtc { get; init; }
@@ -106,6 +109,7 @@ public sealed partial class MediaGridViewModel : ObservableObject
                     {
                         TweetId = r.TweetId,
                         Username = r.Username,
+                        AuthorUsername = r.AuthorUsername,
                         LocalPath = LocalMediaFiles.Resolve(imagesDir, r.TweetId, r.Idx, r.Ext),
                         FullText = r.FullText,
                         CreatedAtUtc = r.CreatedAtUtc,
