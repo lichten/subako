@@ -252,8 +252,14 @@ v0.1.0 のドラフトは**検証前のまま塩漬けになっており、か�
   画像ビューアの URL / 検索の order 保持 / 今日の話題の取得) (2026-08-04)
 - [x] `TweetViewer.csproj` の `Version` と `installer/subako.iss` の `MyAppVersion` を
   `0.1.1` に更新 (2026-08-04)
-- [ ] `v0.1.1` タグを push し、Actions のドラフト Release を生成
-- [ ] 4-1 (クリーン環境起動) を **v0.1.1 の成果物で**実施
+- [x] 実データでの動作確認 (今日の話題の取得 → `search.json` の `order`、
+  バックフィル導線の無効化、終了時の WAL 切り詰め) (2026-08-04)
+- [x] `v0.1.1` タグを push し、Actions のドラフト Release を生成 —
+  subako-0.1.1-win-x64.zip (59MB) + subako-setup-0.1.1.exe (44MB) (2026-08-04)
+- [x] 同梱 fetcher が最新であることを**成果物の中身で**確認 (zip 内の `main.py` に
+  `--order`、`sorsa_fetcher/fetcher.py` に `has_period_operator` /
+  `PeriodQueryBackfillError` があることを検証) (2026-08-04) — 4-1 の確認項目③に相当
+- [ ] 4-1 の①② (初回セットアップ / 取得系ガード) を **v0.1.1 の成果物で** Windows Sandbox 実施
 - [ ] 4-2 (インストーラー実機) を **v0.1.1 の成果物で**実施
 - [ ] v0.1.1 ドラフトを公開し、v0.1.0 のドラフトは削除する
 
