@@ -146,6 +146,12 @@ mac-port-notes §3)。
   settings.json (defaultImageScale) に保存できる。Windows 版は常に等倍・非永続
   (viewer-features.md §5.3)。設定はマシンローカルのため mac-port-notes の
   「非永続の状態」の許容範囲内。個別画像の一時変更は従来どおりセッション限り。
+- View メニューに「文字を大きく (⌘+) / 文字を小さく (⌘-) / 標準サイズ (⌘0)」があり、
+  タイムラインの文字サイズを settings.json (timelineFontScale) に保存できる。
+  Windows 版に同等機能は無い (設定はマシンローカルのため mac-port-notes の許容範囲内)。
+  倍率の段階と丸めは `SubakoCore/Text/TimelineFontScale.swift` が正典で、
+  拡大対象は文字のみ (アイコン径・画像・余白は基準値のまま)。
+
 ## 取得機能 (fetcher 連携) の準備
 
 取得はリポジトリルートの Python fetcher (`main.py`) を子プロセス起動する

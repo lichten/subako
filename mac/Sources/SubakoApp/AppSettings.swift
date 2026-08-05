@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SubakoCore
 
 /// 設定の永続化 (docs/viewer-features.md §2.2)。データフォルダの外 (マシンローカル) に置く。
 /// 保存先: ~/Library/Application Support/Subako/settings.json
@@ -26,6 +27,9 @@ final class AppSettings {
         /// Windows 版は常に等倍・非永続だが、設定はマシンローカルのため保存して良い
         /// (docs/mac-port-notes.md「非永続の状態」)
         var defaultImageScale: Double?
+        /// Mac 版独自: タイムラインの文字サイズ倍率 (TimelineFontScale.steps のいずれか)。
+        /// Windows 版に同等機能は無い
+        var timelineFontScale: Double?
     }
 
     static let supportDir = FileManager.default.urls(
@@ -48,6 +52,8 @@ final class AppSettings {
     var readOnlyMode: Bool = false
     /// タイムライン画像の既定表示倍率 (1.0 = 等倍)
     var defaultImageScale: Double = 1.0
+    /// タイムラインの文字サイズ倍率 (1.0 = 標準)
+    var timelineFontScale: Double = Double(TimelineFontScale.normal)
 
     /// DataDir が空なら RepoDir/data (Windows 版と同じ規則)。
     var effectiveDataDir: String {
@@ -85,6 +91,9 @@ final class AppSettings {
         settings.tagFilterId = settings.hasTagFilter ? stored.tagFilterId : nil
         settings.readOnlyMode = stored.readOnlyMode ?? false
         settings.defaultImageScale = stored.defaultImageScale ?? 1.0
+        // 手書きされた値でも描画が壊れないよう既知の段階に丸める
+        settings.timelineFontScale = Double(TimelineFontScale.normalize(
+            CGFloat(stored.timelineFontScale ?? Double(TimelineFontScale.normal))))
         if settings.repoDir.isEmpty {
             settings.detectRepoDir()
         }
@@ -106,7 +115,8 @@ final class AppSettings {
             tagFilterId: tagFilterId,
             hasTagFilter: tagFilterId != nil,
             readOnlyMode: readOnlyMode,
-            defaultImageScale: defaultImageScale)
+            defaultImageScale: defaultImageScale,
+            timelineFontScale: timelineFontScale)
         do {
             try FileManager.default.createDirectory(
                 atPath: Self.supportDir, withIntermediateDirectories: true)

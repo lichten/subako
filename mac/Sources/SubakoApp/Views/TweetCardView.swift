@@ -23,16 +23,16 @@ struct TweetCardView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if let rtBy = item.retweetedByName {
                         Text("\(rtBy) さんがリツイート")
-                            .font(.system(size: 11))
+                            .font(scaled(11))
                             .foregroundStyle(Theme.retweetGreen)
                     }
                     header
                     if let reply = item.replyHeader {
                         Text(reply)
-                            .font(.system(size: 11))
+                            .font(scaled(11))
                             .foregroundStyle(Theme.accent)
                     }
-                    LinkifiedTextView(text: item.displayText)
+                    LinkifiedTextView(text: item.displayText, font: scaled(13))
                     if !item.bodyImages.isEmpty {
                         imagesFlow(item.bodyImages)
                     }
@@ -45,7 +45,7 @@ struct TweetCardView: View {
                         quoteBlock
                     }
                     Text(item.countsText)
-                        .font(.system(size: 11))
+                        .font(scaled(11))
                         .foregroundStyle(Theme.auxTextLight)
                 }
                 Spacer(minLength: 0)
@@ -81,20 +81,26 @@ struct TweetCardView: View {
         }
     }
 
+    /// タイムライン文字サイズ (Mac 版独自)。基準 pt に設定倍率を掛ける。
+    /// アイコン径・画像・余白は倍率の対象外 (基準 pt はそのまま維持している)
+    private func scaled(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: size * CGFloat(app.settings.timelineFontScale), weight: weight)
+    }
+
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(item.headerDisplayName)
-                .font(.system(size: 13, weight: .bold))
+                .font(scaled(13, weight: .bold))
                 .lineLimit(1)
             if let username = item.headerUsername {
                 Text("@\(username)")
-                    .font(.system(size: 12))
+                    .font(scaled(12))
                     .foregroundStyle(Theme.auxTextLight)
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
             Text(item.localDateText)
-                .font(.system(size: 11))
+                .font(scaled(11))
                 .foregroundStyle(Theme.auxTextLight)
         }
     }
@@ -168,17 +174,17 @@ struct TweetCardView: View {
             HStack(spacing: 4) {
                 CachedIconView(url: item.row.quotedIconUrl, size: 20, cache: app.iconCache)
                 Text(item.row.quotedDisplayName ?? item.row.quotedUsername ?? "")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scaled(12, weight: .semibold))
                     .lineLimit(1)
                 if let name = item.row.quotedUsername {
                     Text("@\(name)")
-                        .font(.system(size: 11))
+                        .font(scaled(11))
                         .foregroundStyle(Theme.auxTextLight)
                         .lineLimit(1)
                 }
             }
             if let text = item.row.quotedText, !text.isEmpty {
-                LinkifiedTextView(text: text, font: .system(size: 12))
+                LinkifiedTextView(text: text, font: scaled(12))
             }
             if !item.quotedImages.isEmpty {
                 imagesFlow(item.quotedImages)

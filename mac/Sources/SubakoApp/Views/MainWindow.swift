@@ -73,6 +73,14 @@ struct MainWindow: View {
             statusBar
         }
         .frame(minWidth: 800, minHeight: 500)
+        // ⌘+ の実体は ⇧⌘= の打鍵。メニュー表示は ⌘+ のまま、ブラウザと同じく
+        // 素の ⌘= でも拡大できるようにする。⌘- / ⌘0 はメニューのキー equivalent が
+        // 先に消費するので、ここは "=" だけ見ればよい
+        .onKeyPress(KeyEquivalent("="), phases: [.down, .repeat]) { press in
+            guard press.modifiers.contains(.command) else { return .ignored }
+            app.changeTimelineFontScale(.larger)
+            return .handled
+        }
         // 前回終了時のウィンドウ配置を復元する (§2.2)
         .background(WindowFrameKeeper(saved: app.settings.windowFrame) { frame in
             app.noteWindowFrame(frame)

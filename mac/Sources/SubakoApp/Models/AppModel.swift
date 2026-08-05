@@ -357,6 +357,26 @@ final class AppModel {
         }
     }
 
+    // MARK: - タイムライン文字サイズ (Mac 版独自)
+
+    enum TimelineFontScaleChange {
+        case larger, smaller, reset
+    }
+
+    /// 「表示」メニューの ⌘+ / ⌘- / ⌘0 から呼ばれる。
+    /// @Observable なので settings の更新だけでカードが再描画される
+    func changeTimelineFontScale(_ change: TimelineFontScaleChange) {
+        let current = CGFloat(settings.timelineFontScale)
+        let next: CGFloat = switch change {
+        case .larger: TimelineFontScale.larger(than: current)
+        case .smaller: TimelineFontScale.smaller(than: current)
+        case .reset: TimelineFontScale.normal
+        }
+        guard next != current else { return }
+        settings.timelineFontScale = Double(next)
+        settings.save()
+    }
+
     // MARK: - 期間フィルタ (§7.3)
 
     private func refreshDateBounds() async {
